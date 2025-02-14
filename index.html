@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>陀螺仪演示（竖直为基准）</title>
+  <title>陀螺仪演示（改进版）</title>
   <style>
     body, html {
       margin: 0;
@@ -22,7 +22,7 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
 
-    // 自适应屏幕大小
+    // 画布自适应屏幕
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -30,11 +30,11 @@
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // 定义全局角度变量（单位：度）
-    let beta = 0,   // 前后倾斜：手机向下倾斜时β > 90，手机向上倾斜时β < 90
-        gamma = 0;  // 左右倾斜：向右为正，向左为负
+    // 全局角度变量（单位：度）
+    // beta：前后倾斜（β=90时手机竖直），gamma：左右倾斜
+    let beta = 0, gamma = 0;
 
-    // 如果在 iOS 13+ 环境下，需要请求权限
+    // 请求设备方向传感器权限（iOS 13+）
     function initDeviceOrientation() {
       if (typeof DeviceOrientationEvent !== 'undefined' &&
           typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -48,23 +48,17 @@
           })
           .catch(console.error);
       } else {
-        // 非 iOS 设备直接监听
         window.addEventListener('deviceorientation', handleOrientation);
       }
     }
-
     function handleOrientation(event) {
-      // event.beta：前后倾斜；event.gamma：左右倾斜
       beta = event.beta || 0;
       gamma = event.gamma || 0;
     }
-
-    // 开始监听设备方向
     initDeviceOrientation();
 
     // 绘制循环
     function draw() {
-      // 清空画布
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // 绘制静态水平线（黑色，宽度2px）
@@ -75,22 +69,27 @@
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // 根据设备倾斜计算动态直线的平移和旋转：
-      // 以 β = 90°（手机竖直）为基准，此时动态直线与静态水平线重合
-      // 当手机向下倾斜（β > 90）时，动态直线将向上移动；
-      // 当手机向上倾斜（β < 90）时，动态直线将向下移动。
-      const verticalScale = 3; // 每 1 度偏差移动 3 像素
+      // 以β=90°为竖直基准，计算垂直偏移（β>90时手机向下倾斜，动态线向上移动）
+      const verticalScale = 3; // 每度偏差对应的像素数，可根据需要调整
       const offsetY = -(beta - 90) * verticalScale;
 
-      // 直线的中心位置
+      // 动态直线中心位置
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2 + offsetY;
 
       // 动态直线长度（像素）
       const lineLength = 200;
-      // 旋转角度：使用 gamma（转为弧度）计算直线的旋转
-      const angle = gamma * Math.PI / 180;
-      // 计算直线半长对应的 x 和 y 分量
+
+      // 为避免在手机接近竖直时（β接近90°）左右倾斜角度γ突变，
+      // 引入一个阈值，在β与90的偏差在一定范围内时平滑减少γ的影响
+      const threshold = 10; // 阈值范围（度）
+      const deviation = Math.abs(beta - 90);
+      // 当偏差小于阈值时，γ的影响按比例降低；偏差超过阈值后恢复正常
+      const factor = Math.min(deviation / threshold, 1);
+      const effectiveGamma = gamma * factor;
+      const angle = effectiveGamma * Math.PI / 180;
+
+      // 计算直线端点（以中心点为基准，左右延伸）
       const dx = (lineLength / 2) * Math.cos(angle);
       const dy = (lineLength / 2) * Math.sin(angle);
 
