@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>陀螺仪演示</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #f0f0f0;
+    }
+    canvas {
+      display: block;
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // 自适应屏幕大小
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // 定义全局角度变量（单位：度）
+    let beta = 0,   // 前后倾斜：手机向下（前倾）为正，向上（后仰）为负
+        gamma = 0;  // 左右倾斜：向右为正，向左为负
+
+    // 如果在 iOS 13+ 环境下，需要请求权限
+    function initDeviceOrientation() {
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then(response => {
+            if (response === 'granted') {
+              window.addEventListener('deviceorientation', handleOrientation);
+            } else {
+              alert("未授权设备方向传感器");
+            }
+          })
+          .catch(console.error);
+      } else {
+        // 非 iOS 设备直接监听
+        window.addEventListener('deviceorientation', handleOrientation);
+      }
+    }
+
+    function handleOrientation(event) {
+      // event.beta：前后倾斜；event.gamma：左右倾斜
+      beta = event.beta || 0;
+      gamma = event.gamma || 0;
+    }
+
+    // 开始监听设备方向
+    initDeviceOrientation();
+
+    // 绘制循环
+    function draw() {
+      // 清空画布
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 绘制静态水平线（黑色，宽度2px）
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // 根据设备倾斜计算动态直线的平移和旋转：
+      // 平移：利用 beta 来控制直线相对于屏幕中心的垂直偏移
+      // 这里设置一个缩放因子，使得倾斜时的移动效果明显，可根据实际情况调整
+      const verticalScale = 3; // 每 1 度移动 3 像素
+      // 当手机向下倾斜（beta 正值），直线上移；向上倾斜（beta 负值），直线下移
+      const offsetY = -beta * verticalScale;
+
+      // 直线的中心位置
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2 + offsetY;
+
+      // 动态直线长度（像素）
+      const lineLength = 200;
+      // 旋转角度：直接使用 gamma（将度转为弧度）
+      const angle = gamma * Math.PI / 180;
+      // 计算直线半长对应的 x 和 y 分量
+      const dx = (lineLength / 2) * Math.cos(angle);
+      const dy = (lineLength / 2) * Math.sin(angle);
+
+      // 绘制动态直线（红色，宽度4px）
+      ctx.beginPath();
+      ctx.moveTo(centerX - dx, centerY - dy);
+      ctx.lineTo(centerX + dx, centerY + dy);
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      requestAnimationFrame(draw);
+    }
+    draw();
+  </script>
+</body>
+</html>
