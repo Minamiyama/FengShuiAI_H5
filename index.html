@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>陀螺仪演示（改进版）</title>
+  <title>陀螺仪演示（含指南针角显示）</title>
   <style>
     body, html {
       margin: 0;
@@ -22,7 +22,7 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
 
-    // 画布自适应屏幕
+    // 自适应屏幕大小
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -30,11 +30,12 @@
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // 全局角度变量（单位：度）
+    // 定义全局角度变量（单位：度）
+    // alpha：设备指向的指南针角度（0～360°，0表示正北）
     // beta：前后倾斜（β=90时手机竖直），gamma：左右倾斜
-    let beta = 0, gamma = 0;
+    let alpha = 0, beta = 0, gamma = 0;
 
-    // 请求设备方向传感器权限（iOS 13+）
+    // 请求设备方向传感器权限（iOS 13+需要）
     function initDeviceOrientation() {
       if (typeof DeviceOrientationEvent !== 'undefined' &&
           typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -52,6 +53,7 @@
       }
     }
     function handleOrientation(event) {
+      alpha = event.alpha || 0;
       beta = event.beta || 0;
       gamma = event.gamma || 0;
     }
@@ -69,27 +71,24 @@
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // 以β=90°为竖直基准，计算垂直偏移（β>90时手机向下倾斜，动态线向上移动）
-      const verticalScale = 3; // 每度偏差对应的像素数，可根据需要调整
+      // 以β=90°为竖直基准，计算垂直偏移
+      // 当β>90时（手机向下倾斜），动态线向上移动；β<90时向下移动
+      const verticalScale = 3; // 每度偏差对应的像素数，可调
       const offsetY = -(beta - 90) * verticalScale;
-
-      // 动态直线中心位置
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2 + offsetY;
 
       // 动态直线长度（像素）
       const lineLength = 200;
 
-      // 为避免在手机接近竖直时（β接近90°）左右倾斜角度γ突变，
-      // 引入一个阈值，在β与90的偏差在一定范围内时平滑减少γ的影响
-      const threshold = 10; // 阈值范围（度）
+      // 平滑处理：当手机接近竖直（β接近90°）时，减少gamma对旋转的影响
+      const threshold = 10; // 平滑阈值（度）
       const deviation = Math.abs(beta - 90);
-      // 当偏差小于阈值时，γ的影响按比例降低；偏差超过阈值后恢复正常
       const factor = Math.min(deviation / threshold, 1);
       const effectiveGamma = gamma * factor;
       const angle = effectiveGamma * Math.PI / 180;
 
-      // 计算直线端点（以中心点为基准，左右延伸）
+      // 计算直线两端相对于中心点的偏移
       const dx = (lineLength / 2) * Math.cos(angle);
       const dy = (lineLength / 2) * Math.sin(angle);
 
@@ -100,6 +99,12 @@
       ctx.strokeStyle = 'red';
       ctx.lineWidth = 4;
       ctx.stroke();
+
+      // 显示与指南针北方的夹角值（alpha值，单位：°）
+      ctx.font = "24px Arial";
+      ctx.fillStyle = "blue";
+      ctx.textAlign = "center";
+      ctx.fillText("北方夹角: " + Math.round(alpha) + "°", centerX, 40);
 
       requestAnimationFrame(draw);
     }
