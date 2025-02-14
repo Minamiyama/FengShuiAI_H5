@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>陀螺仪演示</title>
+  <title>陀螺仪演示（竖直为基准）</title>
   <style>
     body, html {
       margin: 0;
@@ -31,7 +31,7 @@
     window.addEventListener('resize', resizeCanvas);
 
     // 定义全局角度变量（单位：度）
-    let beta = 0,   // 前后倾斜：手机向下（前倾）为正，向上（后仰）为负
+    let beta = 0,   // 前后倾斜：手机向下倾斜时β > 90，手机向上倾斜时β < 90
         gamma = 0;  // 左右倾斜：向右为正，向左为负
 
     // 如果在 iOS 13+ 环境下，需要请求权限
@@ -76,11 +76,11 @@
       ctx.stroke();
 
       // 根据设备倾斜计算动态直线的平移和旋转：
-      // 平移：利用 beta 来控制直线相对于屏幕中心的垂直偏移
-      // 这里设置一个缩放因子，使得倾斜时的移动效果明显，可根据实际情况调整
-      const verticalScale = 3; // 每 1 度移动 3 像素
-      // 当手机向下倾斜（beta 正值），直线上移；向上倾斜（beta 负值），直线下移
-      const offsetY = -beta * verticalScale;
+      // 以 β = 90°（手机竖直）为基准，此时动态直线与静态水平线重合
+      // 当手机向下倾斜（β > 90）时，动态直线将向上移动；
+      // 当手机向上倾斜（β < 90）时，动态直线将向下移动。
+      const verticalScale = 3; // 每 1 度偏差移动 3 像素
+      const offsetY = -(beta - 90) * verticalScale;
 
       // 直线的中心位置
       const centerX = canvas.width / 2;
@@ -88,7 +88,7 @@
 
       // 动态直线长度（像素）
       const lineLength = 200;
-      // 旋转角度：直接使用 gamma（将度转为弧度）
+      // 旋转角度：使用 gamma（转为弧度）计算直线的旋转
       const angle = gamma * Math.PI / 180;
       // 计算直线半长对应的 x 和 y 分量
       const dx = (lineLength / 2) * Math.cos(angle);
