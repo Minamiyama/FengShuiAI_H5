@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>摄像头背景+传感器数据</title>
+  <title>摄像头背景+传感器数据+刻度盘</title>
   <style>
     body, html {
       margin: 0;
@@ -10,7 +10,7 @@
       overflow: hidden;
       background: #000;
     }
-    /* 摄像头视频设置为背景 */
+    /* 摄像头视频全屏背景 */
     #video {
       position: fixed;
       top: 0;
@@ -20,7 +20,7 @@
       object-fit: cover;
       z-index: -1;
     }
-    /* canvas 置于上层 */
+    /* canvas 置于上层，透明，不阻拦手势 */
     #canvas {
       position: fixed;
       top: 0;
@@ -28,34 +28,32 @@
       width: 100%;
       height: 100%;
       z-index: 1;
-      pointer-events: none; /* 让 canvas 不阻挡手势 */
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <!-- 摄像头视频背景 -->
   <video id="video" autoplay playsinline muted></video>
-  <!-- 透明画布 -->
   <canvas id="canvas"></canvas>
-
   <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+    // 获取 video 与 canvas 元素
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
 
-    // 设置 canvas 尺寸
+    // 自适应 canvas 尺寸
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     }
     resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener("resize", resizeCanvas);
 
-    // 获取摄像头视频流
+    // 获取摄像头视频流（需要 HTTPS）
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" }, // 优先使用后置摄像头
+          video: { facingMode: "environment" },
           audio: false
         });
         video.srcObject = stream;
@@ -65,82 +63,177 @@
     }
     startCamera();
 
-    // 全局角度变量（单位：度）
-    // alpha：设备指向的指南针角度（0～360°，0表示正北）
-    // beta：前后倾斜（β=90时手机竖直），gamma：左右倾斜
+    // 全局传感器数据（单位：度）
     let alpha = 0, beta = 0, gamma = 0;
 
     // 请求设备方向传感器权限（iOS 13+需要）
     function initDeviceOrientation() {
-      if (typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function') {
+      if (typeof DeviceOrientationEvent !== "undefined" &&
+          typeof DeviceOrientationEvent.requestPermission === "function") {
         DeviceOrientationEvent.requestPermission()
           .then(response => {
-            if (response === 'granted') {
-              window.addEventListener('deviceorientation', handleOrientation);
+            if (response === "granted") {
+              window.addEventListener("deviceorientation", handleOrientation);
             } else {
               alert("未授权设备方向传感器");
             }
           })
           .catch(console.error);
       } else {
-        window.addEventListener('deviceorientation', handleOrientation);
+        window.addEventListener("deviceorientation", handleOrientation);
       }
     }
     function handleOrientation(event) {
       alpha = event.alpha || 0;
-      beta = event.beta || 0;
+      beta  = event.beta  || 0;
       gamma = event.gamma || 0;
     }
     initDeviceOrientation();
 
-    // 绘制循环
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 绘制顶部刻度盘（水平式滚动刻度，中心为当前 α 值）
+    function drawCompass() {
+      const dialHeight = 80;  // 刻度盘区域高度
+      ctx.save();
+      // 绘制刻度盘背景（半透明）
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.fillRect(0, 0, canvas.width, dialHeight);
 
-      // 绘制静态水平线（黑色，宽度2px）
+      // 刻度盘中基准线（位于 dialHeight 底部上方一点）
+      const centerX = canvas.width / 2;
+      const centerY = dialHeight - 20;
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, centerY);
+      ctx.lineTo(canvas.width, centerY);
+      ctx.stroke();
+
+      // 每度对应的像素数（可根据实际情况调整）
+      const pxPerDegree = 3;
+      // 屏幕左右各能显示多少角度
+      const degreesVisible = canvas.width / (2 * pxPerDegree);
+      // 当前设备朝向（α）
+      let heading = alpha;  // 范围 0～360
+
+      // 按 5° 为一个刻度单位，计算显示范围内的起始与结束刻度值
+      let startTick = Math.floor((heading - degreesVisible) / 5) * 5;
+      let endTick   = Math.ceil((heading + degreesVisible) / 5) * 5;
+
+      // 遍历每个刻度
+      for (let tick = startTick; tick <= endTick; tick += 5) {
+        // 计算当前刻度与中心 (heading) 的差值（考虑 360° 循环）
+        let diff = tick - heading;
+        diff = ((diff + 180) % 360) - 180; // 保证 diff 在 -180 到 180 内
+        // 对应的 x 坐标
+        let x = centerX + diff * pxPerDegree;
+
+        // 默认短刻度高度
+        let tickHeight = 10;
+        let label = null;
+        // 如果刻度对应的角度（模360）是 0,45,90,...315，则显示长刻度和标签
+        let modTick = ((tick % 360) + 360) % 360;
+        if (modTick % 45 === 0) {
+          tickHeight = 20;
+          switch (modTick) {
+            case 0:
+              label = "北";
+              break;
+            case 45:
+              label = "东北";
+              break;
+            case 90:
+              label = "东";
+              break;
+            case 135:
+              label = "东南";
+              break;
+            case 180:
+              label = "南";
+              break;
+            case 225:
+              label = "西南";
+              break;
+            case 270:
+              label = "西";
+              break;
+            case 315:
+              label = "西北";
+              break;
+          }
+        }
+        // 绘制刻度线
+        ctx.beginPath();
+        ctx.moveTo(x, centerY);
+        ctx.lineTo(x, centerY - tickHeight);
+        ctx.stroke();
+        // 绘制标签（如果有）
+        if (label !== null) {
+          ctx.font = "16px Arial";
+          ctx.fillStyle = "black";
+          ctx.textAlign = "center";
+          ctx.fillText(label, x, centerY - tickHeight - 5);
+        }
+      }
+
+      // 绘制指示当前朝向的红色标记（三角形）
+      ctx.fillStyle = "red";
+      ctx.beginPath();
+      ctx.moveTo(centerX, dialHeight - 5);
+      ctx.lineTo(centerX - 10, dialHeight - 25);
+      ctx.lineTo(centerX + 10, dialHeight - 25);
+      ctx.closePath();
+      ctx.fill();
+      // 显示当前朝向的数值
+      ctx.font = "20px Arial";
+      ctx.fillStyle = "red";
+      ctx.textAlign = "center";
+      ctx.fillText(Math.round(heading) + "°", centerX, dialHeight - 30);
+
+      ctx.restore();
+    }
+
+    // 绘制下方传感器数据（动态直线及水平参考线）
+    function drawSensors() {
+      // 绘制画布中心的静态水平线
       ctx.beginPath();
       ctx.moveTo(0, canvas.height / 2);
       ctx.lineTo(canvas.width, canvas.height / 2);
-      ctx.strokeStyle = 'black';
+      ctx.strokeStyle = "black";
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // 以β=90°为竖直基准，计算垂直偏移
-      // 当β>90时（手机向下倾斜），动态线向上移动；β<90时向下移动
-      const verticalScale = 3; // 每度偏差对应的像素数，可调
+      // 以 β=90° 为基准，计算垂直偏移（β>90 时手机向下倾斜，直线上移）
+      const verticalScale = 3;
       const offsetY = -(beta - 90) * verticalScale;
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2 + offsetY;
-
-      // 动态直线长度（像素）
       const lineLength = 200;
 
-      // 平滑处理：当手机接近竖直（β接近90°）时，减少gamma对旋转的影响
-      const threshold = 10; // 平滑阈值（度）
+      // 为避免接近竖直时因 γ 突变，平滑处理：当 |β-90| < threshold 时降低 γ 影响
+      const threshold = 10;
       const deviation = Math.abs(beta - 90);
       const factor = Math.min(deviation / threshold, 1);
       const effectiveGamma = gamma * factor;
       const angle = effectiveGamma * Math.PI / 180;
-
-      // 计算直线两端相对于中心点的偏移
       const dx = (lineLength / 2) * Math.cos(angle);
       const dy = (lineLength / 2) * Math.sin(angle);
 
-      // 绘制动态直线（红色，宽度4px）
+      // 绘制红色动态直线
       ctx.beginPath();
       ctx.moveTo(centerX - dx, centerY - dy);
       ctx.lineTo(centerX + dx, centerY + dy);
-      ctx.strokeStyle = 'red';
+      ctx.strokeStyle = "red";
       ctx.lineWidth = 4;
       ctx.stroke();
+    }
 
-      // 显示与指南针北方的夹角值（alpha值，单位：°）
-      ctx.font = "24px Arial";
-      ctx.fillStyle = "blue";
-      ctx.textAlign = "center";
-      ctx.fillText("北方夹角: " + Math.round(alpha) + "°", centerX, 40);
-
+    // 主绘制循环
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // 绘制下半部分传感器数据
+      drawSensors();
+      // 绘制顶部刻度盘
+      drawCompass();
       requestAnimationFrame(draw);
     }
     draw();
