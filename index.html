@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>摄像头背景+传感器数据+刻度盘（平滑处理）</title>
+  <title>摄像头背景+传感器数据+刻度盘（使用 α+γ 校正）</title>
   <style>
     body, html {
       margin: 0;
@@ -33,15 +33,17 @@
   </style>
 </head>
 <body>
+  <!-- 摄像头视频 -->
   <video id="video" autoplay playsinline muted></video>
+  <!-- 叠加 canvas -->
   <canvas id="canvas"></canvas>
+
   <script>
-    // 获取 video 与 canvas 元素
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
 
-    // 自适应 canvas 尺寸
+    // 自适应设置 canvas 尺寸
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -49,11 +51,11 @@
     resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
 
-    // 获取摄像头视频流（需要 HTTPS）
+    // 获取摄像头视频流（需要 HTTPS 环境）
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
+          video: { facingMode: "environment" }, // 优先使用后置摄像头
           audio: false
         });
         video.srcObject = stream;
@@ -64,11 +66,7 @@
     startCamera();
 
     // 全局传感器数据（单位：度）
-    // 我们将对 alpha 进行平滑处理
     let alpha = 0, beta = 0, gamma = 0;
-    let smoothAlpha = 0;
-    let alphaInitialized = false;
-    const smoothingFactor = 0.1;  // 0 ~ 1 之间，值越小平滑效果越明显
 
     // 请求设备方向传感器权限（iOS 13+需要）
     function initDeviceOrientation() {
@@ -88,23 +86,13 @@
       }
     }
     function handleOrientation(event) {
-      let newAlpha = event.alpha || 0;
-      // 初始化时直接赋值
-      if (!alphaInitialized) {
-        smoothAlpha = newAlpha;
-        alphaInitialized = true;
-      } else {
-        // 对 α 进行低通滤波，减少噪音影响
-        // 注意考虑 360° 循环问题，这里采用简单方法，假设变化量不大
-        smoothAlpha = smoothAlpha + smoothingFactor * (newAlpha - smoothAlpha);
-      }
-      alpha = smoothAlpha;
+      alpha = event.alpha || 0;
       beta  = event.beta  || 0;
       gamma = event.gamma || 0;
     }
     initDeviceOrientation();
 
-    // 绘制顶部刻度盘（水平式滚动刻度，中心为当前 α 值）
+    // 绘制顶部刻度盘，利用修正后的方向（alpha+gamma）显示当前摄像头方向
     function drawCompass() {
       const dialHeight = 80;  // 刻度盘区域高度
       ctx.save();
@@ -112,7 +100,7 @@
       ctx.fillStyle = "rgba(255,255,255,0.5)";
       ctx.fillRect(0, 0, canvas.width, dialHeight);
 
-      // 刻度盘中基准线（位于 dialHeight 底部上方一点）
+      // 刻度盘的基准线
       const centerX = canvas.width / 2;
       const centerY = dialHeight - 20;
       ctx.strokeStyle = "black";
@@ -122,57 +110,41 @@
       ctx.lineTo(canvas.width, centerY);
       ctx.stroke();
 
-      // 每度对应的像素数（可根据实际情况调整）
-      const pxPerDegree = 3;
-      // 屏幕左右各能显示多少角度
-      const degreesVisible = canvas.width / (2 * pxPerDegree);
-      // 当前设备朝向（α），平滑后的值
-      let heading = alpha;  // 范围 0～360
+      // 计算修正后的方向：当手机竖直持握时，alpha 数值不稳定，加入 gamma 校正
+      let correctedHeading = (alpha + gamma) % 360;
+      if (correctedHeading < 0) correctedHeading += 360;
+      let heading = correctedHeading;  // 用于显示的方向
 
-      // 按 5° 为一个刻度单位，计算显示范围内的起始与结束刻度值
+      // 每度对应的像素数（可根据需要调整）
+      const pxPerDegree = 3;
+      // 屏幕左右能显示的角度范围
+      const degreesVisible = canvas.width / (2 * pxPerDegree);
+      // 以 5° 为单位绘制刻度
       let startTick = Math.floor((heading - degreesVisible) / 5) * 5;
       let endTick   = Math.ceil((heading + degreesVisible) / 5) * 5;
 
-      // 遍历每个刻度
       for (let tick = startTick; tick <= endTick; tick += 5) {
-        // 计算当前刻度与中心 (heading) 的差值（考虑 360° 循环）
+        // 计算该刻度与中心方向的差值，处理 360° 循环问题
         let diff = tick - heading;
-        diff = ((diff + 180) % 360) - 180; // 保证 diff 在 -180 到 180 内
-        // 对应的 x 坐标
+        diff = ((diff + 180) % 360) - 180;
         let x = centerX + diff * pxPerDegree;
 
         // 默认短刻度高度
         let tickHeight = 10;
         let label = null;
-        // 如果刻度对应的角度（模360）是 0,45,90,...315，则显示长刻度和标签
+        // 对于 0°,45°,90°…315°显示长刻度和文字标签
         let modTick = ((tick % 360) + 360) % 360;
         if (modTick % 45 === 0) {
           tickHeight = 20;
           switch (modTick) {
-            case 0:
-              label = "北";
-              break;
-            case 45:
-              label = "东北";
-              break;
-            case 90:
-              label = "东";
-              break;
-            case 135:
-              label = "东南";
-              break;
-            case 180:
-              label = "南";
-              break;
-            case 225:
-              label = "西南";
-              break;
-            case 270:
-              label = "西";
-              break;
-            case 315:
-              label = "西北";
-              break;
+            case 0:   label = "北"; break;
+            case 45:  label = "东北"; break;
+            case 90:  label = "东"; break;
+            case 135: label = "东南"; break;
+            case 180: label = "南"; break;
+            case 225: label = "西南"; break;
+            case 270: label = "西"; break;
+            case 315: label = "西北"; break;
           }
         }
         // 绘制刻度线
@@ -180,7 +152,7 @@
         ctx.moveTo(x, centerY);
         ctx.lineTo(x, centerY - tickHeight);
         ctx.stroke();
-        // 绘制标签（如果有）
+        // 绘制刻度标签（如果有）
         if (label !== null) {
           ctx.font = "16px Arial";
           ctx.fillStyle = "black";
@@ -189,7 +161,7 @@
         }
       }
 
-      // 绘制指示当前朝向的红色标记（三角形）
+      // 绘制指示当前方向的红色三角形
       ctx.fillStyle = "red";
       ctx.beginPath();
       ctx.moveTo(centerX, dialHeight - 5);
@@ -197,18 +169,17 @@
       ctx.lineTo(centerX + 10, dialHeight - 25);
       ctx.closePath();
       ctx.fill();
-      // 显示当前朝向的数值
+      // 在红色三角形上方显示当前修正后的方向数值
       ctx.font = "20px Arial";
       ctx.fillStyle = "red";
       ctx.textAlign = "center";
       ctx.fillText(Math.round(heading) + "°", centerX, dialHeight - 30);
-
       ctx.restore();
     }
 
-    // 绘制下方传感器数据（动态直线及水平参考线）
+    // 绘制下半部分传感器数据（动态直线及水平参考线）
     function drawSensors() {
-      // 绘制画布中心的静态水平线
+      // 绘制静态水平线（黑色）
       ctx.beginPath();
       ctx.moveTo(0, canvas.height / 2);
       ctx.lineTo(canvas.width, canvas.height / 2);
@@ -216,14 +187,14 @@
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // 以 β=90° 为基准，计算垂直偏移（β>90 时手机向下倾斜，直线上移）
-      const verticalScale = 3;
+      // 以 β=90° 为基准计算垂直偏移（β>90时，手机向下倾斜，直线上移）
+      const verticalScale = 3; // 每度偏差对应的像素数
       const offsetY = -(beta - 90) * verticalScale;
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2 + offsetY;
       const lineLength = 200;
 
-      // 为避免接近竖直时因 γ 突变，平滑处理：当 |β-90| < threshold 时降低 γ 影响
+      // 为防止当手机接近竖直时因 γ 数值突变，进行平滑处理（这里保留原来的处理方式）
       const threshold = 10;
       const deviation = Math.abs(beta - 90);
       const factor = Math.min(deviation / threshold, 1);
@@ -244,9 +215,7 @@
     // 主绘制循环
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // 绘制下半部分传感器数据
       drawSensors();
-      // 绘制顶部刻度盘
       drawCompass();
       requestAnimationFrame(draw);
     }
