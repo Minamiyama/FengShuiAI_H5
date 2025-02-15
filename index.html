@@ -2,27 +2,48 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>陀螺仪演示（含指南针角显示）</title>
+  <title>摄像头背景+传感器数据</title>
   <style>
     body, html {
       margin: 0;
       padding: 0;
       overflow: hidden;
-      background: #f0f0f0;
+      background: #000;
     }
-    canvas {
-      display: block;
-      background: #fff;
+    /* 摄像头视频设置为背景 */
+    #video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -1;
+    }
+    /* canvas 置于上层 */
+    #canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none; /* 让 canvas 不阻挡手势 */
     }
   </style>
 </head>
 <body>
+  <!-- 摄像头视频背景 -->
+  <video id="video" autoplay playsinline muted></video>
+  <!-- 透明画布 -->
   <canvas id="canvas"></canvas>
+
   <script>
+    const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
 
-    // 自适应屏幕大小
+    // 设置 canvas 尺寸
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -30,7 +51,21 @@
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // 定义全局角度变量（单位：度）
+    // 获取摄像头视频流
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" }, // 优先使用后置摄像头
+          audio: false
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        console.error("无法获取摄像头视频:", err);
+      }
+    }
+    startCamera();
+
+    // 全局角度变量（单位：度）
     // alpha：设备指向的指南针角度（0～360°，0表示正北）
     // beta：前后倾斜（β=90时手机竖直），gamma：左右倾斜
     let alpha = 0, beta = 0, gamma = 0;
