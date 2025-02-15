@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>摄像头背景+传感器数据+刻度盘（使用 α+γ 校正）</title>
+  <title>摄像头背景+传感器数据+刻度盘（使用 α+γ 校正，修正南北）</title>
   <style>
     body, html {
       margin: 0;
@@ -92,7 +92,7 @@
     }
     initDeviceOrientation();
 
-    // 绘制顶部刻度盘，利用修正后的方向（alpha+gamma）显示当前摄像头方向
+    // 绘制顶部刻度盘，利用修正后的方向（(alpha+gamma+180)）显示当前摄像头方向
     function drawCompass() {
       const dialHeight = 80;  // 刻度盘区域高度
       ctx.save();
@@ -110,8 +110,8 @@
       ctx.lineTo(canvas.width, centerY);
       ctx.stroke();
 
-      // 计算修正后的方向：当手机竖直持握时，alpha 数值不稳定，加入 gamma 校正
-      let correctedHeading = (alpha + gamma) % 360;
+      // 计算修正后的方向：当手机竖直持握时，alpha 数据不稳定，加入 gamma 并加 180° 校正
+      let correctedHeading = (alpha + gamma + 180) % 360;
       if (correctedHeading < 0) correctedHeading += 360;
       let heading = correctedHeading;  // 用于显示的方向
 
@@ -134,18 +134,18 @@
         let label = null;
         // 对于 0°,45°,90°…315°显示长刻度和文字标签
         let modTick = ((tick % 360) + 360) % 360;
-        if (modTick % 45 === 0) {
+        switch(modTick) {
+          case 0:   label = "北"; break;
+          case 45:  label = "东北"; break;
+          case 90:  label = "东"; break;
+          case 135: label = "东南"; break;
+          case 180: label = "南"; break;
+          case 225: label = "西南"; break;
+          case 270: label = "西"; break;
+          case 315: label = "西北"; break;
+        }
+        if(modTick % 45 === 0) {
           tickHeight = 20;
-          switch (modTick) {
-            case 0:   label = "北"; break;
-            case 45:  label = "东北"; break;
-            case 90:  label = "东"; break;
-            case 135: label = "东南"; break;
-            case 180: label = "南"; break;
-            case 225: label = "西南"; break;
-            case 270: label = "西"; break;
-            case 315: label = "西北"; break;
-          }
         }
         // 绘制刻度线
         ctx.beginPath();
@@ -194,7 +194,7 @@
       const centerY = canvas.height / 2 + offsetY;
       const lineLength = 200;
 
-      // 为防止当手机接近竖直时因 γ 数值突变，进行平滑处理（这里保留原来的处理方式）
+      // 为防止当手机接近竖直时因 γ 数值突变，进行简单平滑处理
       const threshold = 10;
       const deviation = Math.abs(beta - 90);
       const factor = Math.min(deviation / threshold, 1);
