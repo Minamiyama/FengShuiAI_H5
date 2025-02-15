@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>摄像头背景+传感器数据+刻度盘（使用 α+γ 校正，修正南北）</title>
+  <title>摄像头背景+传感器数据+刻度盘（使用 α+γ 校正，交换南北）</title>
   <style>
     body, html {
       margin: 0;
@@ -92,7 +92,7 @@
     }
     initDeviceOrientation();
 
-    // 绘制顶部刻度盘，利用修正后的方向（(alpha+gamma+180)）显示当前摄像头方向
+    // 绘制顶部刻度盘，利用修正后的方向（α+γ）显示当前摄像头方向
     function drawCompass() {
       const dialHeight = 80;  // 刻度盘区域高度
       ctx.save();
@@ -110,8 +110,8 @@
       ctx.lineTo(canvas.width, centerY);
       ctx.stroke();
 
-      // 计算修正后的方向：当手机竖直持握时，alpha 数据不稳定，加入 gamma 并加 180° 校正
-      let correctedHeading = (alpha + gamma + 180) % 360;
+      // 计算修正后的方向：直接用 α+γ
+      let correctedHeading = (alpha + gamma) % 360;
       if (correctedHeading < 0) correctedHeading += 360;
       let heading = correctedHeading;  // 用于显示的方向
 
@@ -132,17 +132,18 @@
         // 默认短刻度高度
         let tickHeight = 10;
         let label = null;
-        // 对于 0°,45°,90°…315°显示长刻度和文字标签
+        // 根据 sensor 角度（模360）来确定刻度标签
+        // 直接修改 switch 中的 label，把原来北、东北、东南、南、…替换为交换北和南部分
         let modTick = ((tick % 360) + 360) % 360;
         switch(modTick) {
-          case 0:   label = "北"; break;
-          case 45:  label = "东北"; break;
-          case 90:  label = "东"; break;
-          case 135: label = "东南"; break;
-          case 180: label = "南"; break;
-          case 225: label = "西南"; break;
-          case 270: label = "西"; break;
-          case 315: label = "西北"; break;
+          case 0:   label = "南"; break;     // 原来是北，现交换
+          case 45:  label = "东南"; break;     // 原来是东北
+          case 90:  label = "东"; break;       // 保持不变
+          case 135: label = "东北"; break;     // 原来是东南
+          case 180: label = "北"; break;       // 原来是南，现交换
+          case 225: label = "西北"; break;     // 原来是西南
+          case 270: label = "西"; break;       // 保持不变
+          case 315: label = "西南"; break;     // 原来是西北
         }
         if(modTick % 45 === 0) {
           tickHeight = 20;
