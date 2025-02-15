@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>摄像头背景+传感器数据+刻度盘</title>
+  <title>摄像头背景+传感器数据+刻度盘（平滑处理）</title>
   <style>
     body, html {
       margin: 0;
@@ -64,7 +64,11 @@
     startCamera();
 
     // 全局传感器数据（单位：度）
+    // 我们将对 alpha 进行平滑处理
     let alpha = 0, beta = 0, gamma = 0;
+    let smoothAlpha = 0;
+    let alphaInitialized = false;
+    const smoothingFactor = 0.1;  // 0 ~ 1 之间，值越小平滑效果越明显
 
     // 请求设备方向传感器权限（iOS 13+需要）
     function initDeviceOrientation() {
@@ -84,7 +88,17 @@
       }
     }
     function handleOrientation(event) {
-      alpha = event.alpha || 0;
+      let newAlpha = event.alpha || 0;
+      // 初始化时直接赋值
+      if (!alphaInitialized) {
+        smoothAlpha = newAlpha;
+        alphaInitialized = true;
+      } else {
+        // 对 α 进行低通滤波，减少噪音影响
+        // 注意考虑 360° 循环问题，这里采用简单方法，假设变化量不大
+        smoothAlpha = smoothAlpha + smoothingFactor * (newAlpha - smoothAlpha);
+      }
+      alpha = smoothAlpha;
       beta  = event.beta  || 0;
       gamma = event.gamma || 0;
     }
@@ -112,7 +126,7 @@
       const pxPerDegree = 3;
       // 屏幕左右各能显示多少角度
       const degreesVisible = canvas.width / (2 * pxPerDegree);
-      // 当前设备朝向（α）
+      // 当前设备朝向（α），平滑后的值
       let heading = alpha;  // 范围 0～360
 
       // 按 5° 为一个刻度单位，计算显示范围内的起始与结束刻度值
