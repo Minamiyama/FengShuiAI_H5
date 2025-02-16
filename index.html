@@ -8,7 +8,7 @@
   <style>
     /* 设置基础字体大小，1rem = 16px */
     html {
-      font-size: 16px;
+      font-size: 12px;
     }
     /* 全局样式，去除默认内边距，并设置背景为黑色 */
     body, html {
@@ -76,7 +76,6 @@
       bottom: 0;
       left: 0;
       width: 100%;
-      /* 高度自适应内容 */
       background: rgba(255,255,255,0.8);
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -301,7 +300,7 @@
       if (correctedHeading < 0) correctedHeading += 360;
       let heading = correctedHeading;
 
-      // 当 β 在 80～100°范围内时，记录当前方向对应的刻度（取整到5°）
+      // 当 β 在 80～100°范围内时，记录当前方向对应的刻度（取整到 5°）
       let currentTick = Math.round(heading / 5) * 5;
       if (currentTick >= 360) currentTick = 0;
       if (beta >= 80 && beta <= 100) {
@@ -345,23 +344,22 @@
           ctx.textAlign = "center";
           ctx.fillText(label, x, centerY - tickHeight - 5);
         }
+      }
 
-        /***************************************************************
-         * 如果当前刻度属于八个特定方向，则在 β 有效范围时捕获截图     *
-         * 仅当该方向首次被扫描时，调用 captureSnapshot() 并更新图片栏位 *
-         ***************************************************************/
-        const validTicks = [0, 45, 90, 135, 180, 225, 270, 315];
-        if (beta >= 80 && beta <= 100 && validTicks.includes(modTick)) {
-          // 通过方向映射对象得到当前方向的唯一标识
-          let directionKey = directionMapping[modTick];
-          if (directionKey && !capturedDirections[directionKey]) {
-            let dataURL = captureSnapshot(); // 捕获视频截图
-            let imgElem = document.getElementById("img_" + directionKey);
-            if (imgElem) {
-              imgElem.src = dataURL;
-            }
-            capturedDirections[directionKey] = true; // 标记该方向已捕获
+      /********************************************************************
+       * 判断当前刻度是否属于八个特定方向，并在 β 有效范围时捕获截图    *
+       * 此处将截图逻辑移出 for 循环，仅对当前方向（currentTick）处理一次 *
+       ********************************************************************/
+      const validTicks = [0, 45, 90, 135, 180, 225, 270, 315];
+      if (beta >= 80 && beta <= 100 && validTicks.includes(currentTick)) {
+        let directionKey = directionMapping[currentTick];
+        if (directionKey && !capturedDirections[directionKey]) {
+          let dataURL = captureSnapshot(); // 捕获视频截图
+          let imgElem = document.getElementById("img_" + directionKey);
+          if (imgElem) {
+            imgElem.src = dataURL;
           }
+          capturedDirections[directionKey] = true; // 标记该方向已捕获
         }
       }
 
@@ -431,7 +429,7 @@
 
       /*********************************************
        * 更新 β 标签：实时显示当前 β 值        *
-       * 当 β 在 80～100°范围内，文字显示为绿色，否则红色 *
+       * 当 β 在 80～100°范围内，文字显示为绿色，否则为红色 *
        *********************************************/
       betaLabel.innerText = "Beta: " + beta.toFixed(1) + "°";
       betaLabel.style.color = (beta >= 80 && beta <= 100) ? "green" : "red";
