@@ -2,20 +2,22 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <!-- 设置 viewport 以确保在高像素密度屏幕下显示合适 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>摄像头背景+传感器数据+刻度盘（扫描进度及方向截图）</title>
   <style>
     /* 设置基础字体大小，1rem = 16px */
     html {
       font-size: 16px;
     }
-    /* 全局样式设置，确保页面无默认内边距、背景为黑色 */
+    /* 全局样式，去除默认内边距，并设置背景为黑色 */
     body, html {
       margin: 0;
       padding: 0;
       overflow: hidden;
       background: #000;
     }
-    /* 摄像头视频：设置为全屏背景，z-index 为 -2 使其在最底层 */
+    /* 摄像头视频：全屏背景，置于最底层 */
     #video {
       position: fixed;
       top: 0;
@@ -25,7 +27,7 @@
       object-fit: cover;
       z-index: -2;
     }
-    /* canvas：用于绘制传感器数据和刻度盘，设置为全屏覆盖，z-index 为 -1 */
+    /* canvas：用于绘制传感器数据和刻度盘，覆盖全屏，置于视频之上 */
     #canvas {
       position: fixed;
       top: 0;
@@ -33,7 +35,7 @@
       width: 100%;
       height: 100%;
       z-index: -1;
-      pointer-events: none; /* 不拦截用户交互 */
+      pointer-events: none;
     }
     /* β值标签：显示当前β值，位于左上角 */
     #betaLabel {
@@ -46,7 +48,7 @@
       padding: 0.3125rem 0.625rem; /* 5px 10px */
       border-radius: 0.25rem;
     }
-    /* 完成度标签：显示扫描完成度，居中显示于页面顶部 */
+    /* 完成度标签：显示扫描完成度，居中于页面顶部 */
     #completionLabel {
       position: fixed;
       top: 5.625rem; /* 90px */
@@ -103,7 +105,7 @@
   <!-- 重置按钮：点击后重置扫描记录及截图 -->
   <button id="resetButton">重置</button>
   <!-- 下方方向图片栏，八个图片对应八个特定方向 -->
-  <!-- 顺序：东、南、西、北、东南、西南、东北、西北 -->
+  <!-- 图片栏顺序：东、南、西、北、东南、西南、东北、西北 -->
   <div id="directionContainer">
     <img id="img_东" alt="东">
     <img id="img_南" alt="南">
@@ -175,7 +177,7 @@
         window.addEventListener("deviceorientation", handleOrientation);
       }
     }
-    // 事件处理函数：更新全局的 alpha、beta、gamma 值
+    // 事件处理函数，更新全局的 alpha、beta、gamma 值
     function handleOrientation(event) {
       alpha = event.alpha || 0;
       beta  = event.beta  || 0;
@@ -190,8 +192,22 @@
     const visitedTicks = new Set();
     const TOTAL_TICKS = 360 / 5; // 72
 
-    // 记录已捕获的方向截图，键为方向字符串（如 "东"、"南"等）
+    // 记录已捕获的方向截图，键为方向字符串
     let capturedDirections = {};
+
+    /**************************************************************
+     * 定义方向映射对象，明确将 modTick 值映射到对应方向字符串 *
+     **************************************************************/
+    const directionMapping = {
+      0: "南",
+      45: "东南",
+      90: "东",
+      135: "东北",
+      180: "北",
+      225: "西北",
+      270: "西",
+      315: "西南"
+    };
 
     /***************************************
      * 重置按钮事件：清空扫描记录和截图     *
@@ -199,7 +215,7 @@
     resetButton.addEventListener("click", () => {
       visitedTicks.clear();
       capturedDirections = {};
-      // 清空下方每个方向图片栏中的图片
+      // 清空下方图片栏中的图片
       const directions = ["东", "南", "西", "北", "东南", "西南", "东北", "西北"];
       directions.forEach(dir => {
         let imgElem = document.getElementById("img_" + dir);
@@ -213,15 +229,13 @@
      * captureSnapshot()：捕获当前视频截图，返回 data URL *
      **********************************************/
     function captureSnapshot() {
-      // 创建一个临时 canvas，用于绘制当前视频帧
+      // 创建一个临时 canvas，用于捕获当前视频帧
       const snapCanvas = document.createElement("canvas");
       const snapCtx = snapCanvas.getContext("2d");
-      // 设置临时 canvas 尺寸为视频实际尺寸；若不可用则使用默认值
+      // 使用视频实际尺寸，如果不可用则使用默认值
       snapCanvas.width = video.videoWidth || 640;
       snapCanvas.height = video.videoHeight || 480;
-      // 将当前视频画面绘制到临时 canvas 上
       snapCtx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
-      // 返回截图的 data URL（PNG 格式）
       return snapCanvas.toDataURL("image/png");
     }
 
@@ -229,9 +243,9 @@
      * drawCompass()：绘制顶部刻度盘，更新扫描记录、完成度、截图 *
      ****************************************************/
     function drawCompass() {
-      const dialHeight = 80;  // 刻度盘区域高度（单位：像素）
+      const dialHeight = 80;  // 刻度盘区域高度（像素）
       ctx.save();             // 保存当前绘图状态
-      // 绘制刻度盘背景，半透明白色
+      // 绘制刻度盘背景（半透明白色）
       ctx.fillStyle = "rgba(255,255,255,0.5)";
       ctx.fillRect(0, 0, canvas.width, dialHeight);
 
@@ -245,23 +259,23 @@
       ctx.lineTo(canvas.width, centerY);
       ctx.stroke();
 
-      // 计算修正后的方向：这里直接使用 alpha + gamma（单位：度）
+      // 计算修正后的方向：直接使用 alpha + gamma（单位：度）
       let correctedHeading = (alpha + gamma) % 360;
       if (correctedHeading < 0) correctedHeading += 360;
       let heading = correctedHeading;
 
-      // 当 β 在 80～100°范围内时，记录当前方向对应的刻度
+      // 当 β 在 80～100°范围内时，记录当前方向对应的刻度（取整到 5°）
       let currentTick = Math.round(heading / 5) * 5;
       if (currentTick >= 360) currentTick = 0;
       if (beta >= 80 && beta <= 100) {
         visitedTicks.add(currentTick);
       }
 
-      // 设置每度对应的像素数，这里设置为 3px/度
+      // 设置每度对应的像素数（3px/度）
       const pxPerDegree = 3;
-      // 根据屏幕宽度计算可见角度范围
+      // 根据屏幕宽度计算可见角度范围（以度为单位）
       const degreesVisible = canvas.width / (2 * pxPerDegree);
-      // 计算显示范围内的起始和结束刻度（以 5°为单位）
+      // 以 5° 为单位计算显示范围内的起始和结束刻度
       let startTick = Math.floor((heading - degreesVisible) / 5) * 5;
       let endTick = Math.ceil((heading + degreesVisible) / 5) * 5;
 
@@ -272,39 +286,17 @@
         diff = ((diff + 180) % 360) - 180;
         let x = centerX + diff * pxPerDegree;
         let tickHeight = 10;  // 默认短刻度高度
-        let label = null;     // 方向标签
-
         // 计算模360后的刻度值
         let modTick = ((tick % 360) + 360) % 360;
-        /*
-          根据 modTick 映射方向标签，映射关系如下：
-          0   -> "南"
-          45  -> "东南"
-          90  -> "东"
-          135 -> "东北"
-          180 -> "北"
-          225 -> "西北"
-          270 -> "西"
-          315 -> "西南"
-        */
-        switch(modTick) {
-          case 0:   label = "南"; break;
-          case 45:  label = "东南"; break;
-          case 90:  label = "东"; break;
-          case 135: label = "东北"; break;
-          case 180: label = "北"; break;
-          case 225: label = "西北"; break;
-          case 270: label = "西"; break;
-          case 315: label = "西南"; break;
-        }
-        // 如果该刻度正好是八个方向的整点，则使用长刻度（20px）
+        // 使用方向映射对象得到对应方向标签
+        let label = directionMapping[modTick] || null;
+        // 如果该刻度正好对应八个方向（整45°），则使用长刻度（20px）
         if(modTick % 45 === 0) {
           tickHeight = 20;
         }
         // 根据扫描记录判断，若该刻度已扫描，则刻度颜色为绿色，否则为红色
         let tickColor = visitedTicks.has(modTick) ? "green" : "red";
         ctx.strokeStyle = tickColor;
-        // 绘制刻度线
         ctx.beginPath();
         ctx.moveTo(x, centerY);
         ctx.lineTo(x, centerY - tickHeight);
@@ -319,21 +311,19 @@
 
         /***************************************************************
          * 如果当前刻度属于八个特定方向，则在 β 有效范围时捕获截图     *
-         * 八个特定方向要求：东（90）、南（0）、西（270）、北（180）、   *
-         * 东南（45）、西南（315）、东北（135）、西北（225）              *
-         * 这里只在第一次捕获时进行截图，并存储到对应的图片栏位中         *
+         * 仅当该方向首次被扫描时，调用 captureSnapshot() 并更新图片栏位 *
          ***************************************************************/
         const validTicks = [0, 45, 90, 135, 180, 225, 270, 315];
         if (beta >= 80 && beta <= 100 && validTicks.includes(modTick)) {
-          // 如果当前方向对应的 label 尚未捕获截图，则进行截图
-          if (!capturedDirections[label]) {
-            let dataURL = captureSnapshot(); // 捕获当前视频截图
-            // 根据 label 获取对应的图片栏位（图片 id 格式为 "img_" + label）
-            let imgElem = document.getElementById("img_" + label);
+          // 通过方向映射对象得到当前方向的唯一标识
+          let directionKey = directionMapping[modTick];
+          if (directionKey && !capturedDirections[directionKey]) {
+            let dataURL = captureSnapshot(); // 捕获视频截图
+            let imgElem = document.getElementById("img_" + directionKey);
             if (imgElem) {
-              imgElem.src = dataURL; // 将截图显示在图片栏位中
+              imgElem.src = dataURL;
             }
-            capturedDirections[label] = true; // 标记该方向已捕获
+            capturedDirections[directionKey] = true; // 标记该方向已捕获
           }
         }
       }
@@ -347,7 +337,7 @@
       ctx.closePath();
       ctx.fill();
 
-      // 计算扫描完成度百分比，并更新完成度标签
+      // 计算扫描完成度百分比，并更新完成度标签（通过 DOM 元素显示）
       const completion = Math.round((visitedTicks.size / TOTAL_TICKS) * 100);
       completionLabel.innerText = "完成度: " + completion + "%";
 
@@ -355,7 +345,7 @@
     }
 
     /*********************************************
-     * drawSensors()：绘制下半部分的传感器数据图形 *
+     * drawSensors()：绘制下半部分传感器数据图形 *
      *********************************************/
     function drawSensors() {
       // 绘制水平参考线，位于画布垂直中心
@@ -366,14 +356,14 @@
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // 根据 β 值计算垂直偏移，β = 90° 为基准
+      // 根据 β = 90° 为基准，计算垂直偏移（β>90时，手机向下倾斜则直线上移）
       const verticalScale = 3; // 每度偏差对应的像素数
       const offsetY = -(beta - 90) * verticalScale;
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2 + offsetY;
       const lineLength = 200; // 动态直线长度
 
-      // 对 γ 的影响做简单平滑处理
+      // 对 γ 的影响进行简单平滑处理
       const threshold = 10;
       const deviation = Math.abs(beta - 90);
       const factor = Math.min(deviation / threshold, 1);
@@ -382,7 +372,7 @@
       const dx = (lineLength / 2) * Math.cos(angle);
       const dy = (lineLength / 2) * Math.sin(angle);
 
-      // 绘制红色动态直线，表示设备倾斜状态
+      // 绘制红色动态直线，表示设备的倾斜状态
       ctx.beginPath();
       ctx.moveTo(centerX - dx, centerY - dy);
       ctx.lineTo(centerX + dx, centerY + dy);
@@ -397,13 +387,13 @@
     function draw() {
       // 清除整个 canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // 绘制下半部分传感器数据
+      // 绘制下半部分传感器数据图形
       drawSensors();
       // 绘制顶部刻度盘，同时处理扫描记录和截图
       drawCompass();
 
       /*********************************************
-       * 更新 β 值标签：实时显示当前 β 值        *
+       * 更新 β 标签：实时显示当前 β 值        *
        * 当 β 在 80～100°范围内，文字显示为绿色，否则红色 *
        *********************************************/
       betaLabel.innerText = "Beta: " + beta.toFixed(1) + "°";
