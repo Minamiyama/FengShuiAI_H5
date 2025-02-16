@@ -35,7 +35,7 @@
       width: 100%;
       height: 100%;
       z-index: -1;
-      pointer-events: none;
+      pointer-events: none; /* 不拦截用户交互 */
     }
     /* β值标签：显示当前β值，位于左上角 */
     #betaLabel {
@@ -70,26 +70,39 @@
       padding: 0.625rem 1.25rem; /* 10px 20px */
       font-size: 1rem; /* 16px */
     }
-    /* 下方方向图片栏容器：固定在页面底部，显示八个图片栏位 */
+    /* 下方方向图片栏容器：使用 CSS Grid 分为两行，每行4个 */
     #directionContainer {
       position: fixed;
       bottom: 0;
       left: 0;
       width: 100%;
-      height: 7.5rem; /* 120px */
+      /* 高度自适应内容 */
       background: rgba(255,255,255,0.8);
-      display: flex;
-      justify-content: space-around;
-      align-items: center;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.625rem; /* 10px 间隔 */
+      padding: 0.625rem; /* 内边距 */
       z-index: 2;
     }
-    /* 图片栏：设置图片大小、边框和背景 */
-    #directionContainer img {
+    /* 每个方向项：垂直排列，居中显示 */
+    .directionItem {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    /* 方向项中的图片 */
+    .directionItem img {
       width: 6.25rem; /* 100px */
       height: 6.25rem; /* 100px */
       object-fit: cover;
       border: 0.125rem solid #ccc; /* 2px */
       background: #eee;
+    }
+    /* 方向项中的文字标签 */
+    .directionLabel {
+      font-size: 1rem; /* 16px */
+      margin-top: 0.3125rem; /* 5px */
+      color: #333;
     }
   </style>
 </head>
@@ -104,17 +117,41 @@
   <div id="completionLabel">完成度: 0%</div>
   <!-- 重置按钮：点击后重置扫描记录及截图 -->
   <button id="resetButton">重置</button>
-  <!-- 下方方向图片栏，八个图片对应八个特定方向 -->
-  <!-- 图片栏顺序：东、南、西、北、东南、西南、东北、西北 -->
+  <!-- 下方方向图片栏，使用 grid 布局，每个方向项包含图片和文字标签 -->
+  <!-- 顺序：东、南、西、北、东南、西南、东北、西北 -->
   <div id="directionContainer">
-    <img id="img_东" alt="东">
-    <img id="img_南" alt="南">
-    <img id="img_西" alt="西">
-    <img id="img_北" alt="北">
-    <img id="img_东南" alt="东南">
-    <img id="img_西南" alt="西南">
-    <img id="img_东北" alt="东北">
-    <img id="img_西北" alt="西北">
+    <div class="directionItem">
+      <img id="img_东" alt="东">
+      <div class="directionLabel">东</div>
+    </div>
+    <div class="directionItem">
+      <img id="img_南" alt="南">
+      <div class="directionLabel">南</div>
+    </div>
+    <div class="directionItem">
+      <img id="img_西" alt="西">
+      <div class="directionLabel">西</div>
+    </div>
+    <div class="directionItem">
+      <img id="img_北" alt="北">
+      <div class="directionLabel">北</div>
+    </div>
+    <div class="directionItem">
+      <img id="img_东南" alt="东南">
+      <div class="directionLabel">东南</div>
+    </div>
+    <div class="directionItem">
+      <img id="img_西南" alt="西南">
+      <div class="directionLabel">西南</div>
+    </div>
+    <div class="directionItem">
+      <img id="img_东北" alt="东北">
+      <div class="directionLabel">东北</div>
+    </div>
+    <div class="directionItem">
+      <img id="img_西北" alt="西北">
+      <div class="directionLabel">西北</div>
+    </div>
   </div>
 
   <script>
@@ -196,7 +233,7 @@
     let capturedDirections = {};
 
     /**************************************************************
-     * 定义方向映射对象，明确将 modTick 值映射到对应方向字符串 *
+     * 定义方向映射对象，将 modTick 值映射到对应方向字符串 *
      **************************************************************/
     const directionMapping = {
       0: "南",
@@ -264,7 +301,7 @@
       if (correctedHeading < 0) correctedHeading += 360;
       let heading = correctedHeading;
 
-      // 当 β 在 80～100°范围内时，记录当前方向对应的刻度（取整到 5°）
+      // 当 β 在 80～100°范围内时，记录当前方向对应的刻度（取整到5°）
       let currentTick = Math.round(heading / 5) * 5;
       if (currentTick >= 360) currentTick = 0;
       if (beta >= 80 && beta <= 100) {
@@ -363,7 +400,7 @@
       const centerY = canvas.height / 2 + offsetY;
       const lineLength = 200; // 动态直线长度
 
-      // 对 γ 的影响进行简单平滑处理
+      // 对 γ 的影响做简单平滑处理
       const threshold = 10;
       const deviation = Math.abs(beta - 90);
       const factor = Math.min(deviation / threshold, 1);
@@ -389,7 +426,7 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       // 绘制下半部分传感器数据图形
       drawSensors();
-      // 绘制顶部刻度盘，同时处理扫描记录和截图
+      // 绘制顶部刻度盘，同时更新扫描记录、完成度和方向截图
       drawCompass();
 
       /*********************************************
