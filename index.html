@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>摄像头背景+传感器数据+刻度盘（使用 α+γ 校正，交换南北）</title>
+  <title>摄像头背景+传感器数据+刻度盘（扫描进度）</title>
   <style>
     body, html {
       margin: 0;
@@ -30,6 +30,15 @@
       z-index: 1;
       pointer-events: none;
     }
+    /* 重置按钮 */
+    #resetButton {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      z-index: 2;
+      padding: 10px 20px;
+      font-size: 16px;
+    }
   </style>
 </head>
 <body>
@@ -37,6 +46,8 @@
   <video id="video" autoplay playsinline muted></video>
   <!-- 叠加 canvas -->
   <canvas id="canvas"></canvas>
+  <!-- 重置按钮 -->
+  <button id="resetButton">重置</button>
 
   <script>
     const video = document.getElementById("video");
@@ -92,7 +103,17 @@
     }
     initDeviceOrientation();
 
-    // 绘制顶部刻度盘，利用修正后的方向（α+γ）显示当前摄像头方向
+    // 用于记录已经扫描过的刻度（以每5°为单位）
+    const visitedTicks = new Set();
+    const TOTAL_TICKS = 360 / 5; // 共72个刻度
+
+    // 重置按钮处理：清空扫描记录
+    const resetButton = document.getElementById("resetButton");
+    resetButton.addEventListener("click", () => {
+      visitedTicks.clear();
+    });
+
+    // 绘制顶部刻度盘，同时显示扫描完成度
     function drawCompass() {
       const dialHeight = 80;  // 刻度盘区域高度
       ctx.save();
@@ -110,21 +131,26 @@
       ctx.lineTo(canvas.width, centerY);
       ctx.stroke();
 
-      // 计算修正后的方向：直接用 α+γ
+      // 计算修正后的方向：直接用 α+γ（单位：度）
       let correctedHeading = (alpha + gamma) % 360;
       if (correctedHeading < 0) correctedHeading += 360;
-      let heading = correctedHeading;  // 用于显示的方向
+      let heading = correctedHeading;  // 当前方向
+
+      // 更新扫描记录：将当前方向对应的刻度（每5°）标记为已扫描
+      let currentTick = Math.round(heading / 5) * 5;
+      if (currentTick >= 360) currentTick = 0;
+      visitedTicks.add(currentTick);
 
       // 每度对应的像素数（可根据需要调整）
       const pxPerDegree = 3;
       // 屏幕左右能显示的角度范围
       const degreesVisible = canvas.width / (2 * pxPerDegree);
-      // 以 5° 为单位绘制刻度
+      // 以 5° 为单位绘制刻度，计算显示范围内的起始与结束刻度
       let startTick = Math.floor((heading - degreesVisible) / 5) * 5;
       let endTick   = Math.ceil((heading + degreesVisible) / 5) * 5;
 
       for (let tick = startTick; tick <= endTick; tick += 5) {
-        // 计算该刻度与中心方向的差值，处理 360° 循环问题
+        // 处理 360° 循环，计算该刻度与中心方向的差值
         let diff = tick - heading;
         diff = ((diff + 180) % 360) - 180;
         let x = centerX + diff * pxPerDegree;
@@ -132,22 +158,24 @@
         // 默认短刻度高度
         let tickHeight = 10;
         let label = null;
-        // 根据 sensor 角度（模360）来确定刻度标签
-        // 直接修改 switch 中的 label，把原来北、东北、东南、南、…替换为交换北和南部分
+        // 根据刻度（模360）确定标签（直接在switch中交换南北）
         let modTick = ((tick % 360) + 360) % 360;
         switch(modTick) {
-          case 0:   label = "南"; break;     // 原来是北，现交换
-          case 45:  label = "东南"; break;     // 原来是东北
-          case 90:  label = "东"; break;       // 保持不变
-          case 135: label = "东北"; break;     // 原来是东南
-          case 180: label = "北"; break;       // 原来是南，现交换
-          case 225: label = "西北"; break;     // 原来是西南
-          case 270: label = "西"; break;       // 保持不变
-          case 315: label = "西南"; break;     // 原来是西北
+          case 0:   label = "南"; break;     // 原来为“北”，现交换显示
+          case 45:  label = "东南"; break;
+          case 90:  label = "东"; break;
+          case 135: label = "东北"; break;
+          case 180: label = "北"; break;       // 原来为“南”，现交换显示
+          case 225: label = "西北"; break;
+          case 270: label = "西"; break;
+          case 315: label = "西南"; break;
         }
         if(modTick % 45 === 0) {
           tickHeight = 20;
         }
+        // 根据是否扫描过，设置刻度颜色：已扫描为绿色，未扫描为红色
+        let tickColor = visitedTicks.has(modTick) ? "green" : "red";
+        ctx.strokeStyle = tickColor;
         // 绘制刻度线
         ctx.beginPath();
         ctx.moveTo(x, centerY);
@@ -156,7 +184,7 @@
         // 绘制刻度标签（如果有）
         if (label !== null) {
           ctx.font = "16px Arial";
-          ctx.fillStyle = "black";
+          ctx.fillStyle = tickColor;
           ctx.textAlign = "center";
           ctx.fillText(label, x, centerY - tickHeight - 5);
         }
@@ -170,11 +198,19 @@
       ctx.lineTo(centerX + 10, dialHeight - 25);
       ctx.closePath();
       ctx.fill();
-      // 在红色三角形上方显示当前修正后的方向数值
+      // 在红色三角形上方显示当前方向数值
       ctx.font = "20px Arial";
       ctx.fillStyle = "red";
       ctx.textAlign = "center";
       ctx.fillText(Math.round(heading) + "°", centerX, dialHeight - 30);
+
+      // 绘制扫描完成度标签：显示已扫描刻度占比
+      const completion = Math.round((visitedTicks.size / TOTAL_TICKS) * 100);
+      ctx.font = "20px Arial";
+      ctx.fillStyle = "blue";
+      ctx.textAlign = "right";
+      ctx.fillText("完成度: " + completion + "%", canvas.width - 10, 30);
+
       ctx.restore();
     }
 
@@ -195,7 +231,7 @@
       const centerY = canvas.height / 2 + offsetY;
       const lineLength = 200;
 
-      // 为防止当手机接近竖直时因 γ 数值突变，进行简单平滑处理
+      // 简单处理：当手机接近竖直时，γ 的影响作一定平滑
       const threshold = 10;
       const deviation = Math.abs(beta - 90);
       const factor = Math.min(deviation / threshold, 1);
