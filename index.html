@@ -52,6 +52,17 @@
       padding: 2px 8px;
       border-radius: 4px;
     }
+    /* β标签 */
+    #betaLabel {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 2;
+      font-size: 20px;
+      background: rgba(255,255,255,0.7);
+      padding: 5px 10px;
+      border-radius: 4px;
+    }
   </style>
 </head>
 <body>
@@ -59,6 +70,8 @@
   <video id="video" autoplay playsinline muted></video>
   <!-- 叠加 canvas -->
   <canvas id="canvas"></canvas>
+  <!-- β值标签 -->
+  <div id="betaLabel">Beta: 0°</div>
   <!-- 完成度标签 -->
   <div id="completionLabel">完成度: 0%</div>
   <!-- 重置按钮 -->
@@ -69,6 +82,7 @@
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const completionLabel = document.getElementById("completionLabel");
+    const betaLabel = document.getElementById("betaLabel");
 
     // 自适应设置 canvas 尺寸
     function resizeCanvas() {
@@ -264,6 +278,15 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawSensors();
       drawCompass();
+
+      // 更新 beta 标签，根据 beta 值范围显示不同颜色
+      betaLabel.innerText = "Beta: " + beta.toFixed(1) + "°";
+      if(beta >= 80 && beta <= 100) {
+        betaLabel.style.color = "green";
+      } else {
+        betaLabel.style.color = "red";
+      }
+
       requestAnimationFrame(draw);
     }
     draw();
