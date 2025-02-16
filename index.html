@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>摄像头背景+传感器数据+刻度盘（扫描进度）</title>
+  <title>摄像头背景+传感器数据+刻度盘（扫描进度，限制β范围）</title>
   <style>
     body, html {
       margin: 0;
@@ -30,7 +30,7 @@
       z-index: 1;
       pointer-events: none;
     }
-    /* 重置按钮（下移至刻度盘下方） */
+    /* 重置按钮 */
     #resetButton {
       position: fixed;
       top: 140px;
@@ -39,7 +39,7 @@
       padding: 10px 20px;
       font-size: 16px;
     }
-    /* 完成度标签，位于刻度盘下方居中 */
+    /* 完成度标签 */
     #completionLabel {
       position: fixed;
       top: 90px;
@@ -152,10 +152,12 @@
       if (correctedHeading < 0) correctedHeading += 360;
       let heading = correctedHeading;  // 当前方向
 
-      // 更新扫描记录：当前方向对应的刻度（每5°）标记为已扫描
+      // 仅当 beta 在 80°～100°时记录当前方向的刻度
       let currentTick = Math.round(heading / 5) * 5;
       if (currentTick >= 360) currentTick = 0;
-      visitedTicks.add(currentTick);
+      if (beta >= 80 && beta <= 100) {
+        visitedTicks.add(currentTick);
+      }
 
       // 每度对应的像素数（可根据需要调整）
       const pxPerDegree = 3;
@@ -215,7 +217,7 @@
       ctx.closePath();
       ctx.fill();
 
-      // 更新完成度标签（不在 canvas 内绘制，而更新 DOM 元素）
+      // 更新完成度标签（通过 DOM 元素显示）
       const completion = Math.round((visitedTicks.size / TOTAL_TICKS) * 100);
       completionLabel.innerText = "完成度: " + completion + "%";
 
