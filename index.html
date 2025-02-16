@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>摄像头背景+传感器数据+刻度盘（扫描进度，限制β范围）</title>
+  <title>摄像头背景+传感器数据+刻度盘（扫描进度及方向截图）</title>
   <style>
     body, html {
       margin: 0;
@@ -18,7 +18,7 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      z-index: -1;
+      z-index: -2;
     }
     /* canvas 置于上层，透明，不阻拦手势 */
     #canvas {
@@ -27,17 +27,19 @@
       left: 0;
       width: 100%;
       height: 100%;
-      z-index: 1;
+      z-index: -1;
       pointer-events: none;
     }
-    /* 重置按钮 */
-    #resetButton {
+    /* β值标签 */
+    #betaLabel {
       position: fixed;
-      top: 140px;
-      right: 10px;
+      top: 10px;
+      left: 10px;
       z-index: 2;
-      padding: 10px 20px;
-      font-size: 16px;
+      font-size: 20px;
+      background: rgba(255,255,255,0.7);
+      padding: 5px 10px;
+      border-radius: 4px;
     }
     /* 完成度标签 */
     #completionLabel {
@@ -52,16 +54,34 @@
       padding: 2px 8px;
       border-radius: 4px;
     }
-    /* β标签 */
-    #betaLabel {
+    /* 重置按钮 */
+    #resetButton {
       position: fixed;
-      top: 10px;
-      left: 10px;
+      top: 140px;
+      right: 10px;
       z-index: 2;
-      font-size: 20px;
-      background: rgba(255,255,255,0.7);
-      padding: 5px 10px;
-      border-radius: 4px;
+      padding: 10px 20px;
+      font-size: 16px;
+    }
+    /* 下方方向图片栏容器 */
+    #directionContainer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 120px;
+      background: rgba(255,255,255,0.8);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 2;
+    }
+    #directionContainer img {
+      width: 100px;
+      height: 100px;
+      object-fit: cover;
+      border: 2px solid #ccc;
+      background: #eee;
     }
   </style>
 </head>
@@ -76,13 +96,25 @@
   <div id="completionLabel">完成度: 0%</div>
   <!-- 重置按钮 -->
   <button id="resetButton">重置</button>
+  <!-- 下方方向图片栏（顺序：东、南、西、北、东南、西南、东北、西北） -->
+  <div id="directionContainer">
+    <img id="img_东" alt="东">
+    <img id="img_南" alt="南">
+    <img id="img_西" alt="西">
+    <img id="img_北" alt="北">
+    <img id="img_东南" alt="东南">
+    <img id="img_西南" alt="西南">
+    <img id="img_东北" alt="东北">
+    <img id="img_西北" alt="西北">
+  </div>
 
   <script>
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
-    const completionLabel = document.getElementById("completionLabel");
     const betaLabel = document.getElementById("betaLabel");
+    const completionLabel = document.getElementById("completionLabel");
+    const resetButton = document.getElementById("resetButton");
 
     // 自适应设置 canvas 尺寸
     function resizeCanvas() {
@@ -92,11 +124,11 @@
     resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
 
-    // 获取摄像头视频流（需要 HTTPS 环境）
+    // 获取摄像头视频流（需 HTTPS）
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" }, // 优先使用后置摄像头
+          video: { facingMode: "environment" },
           audio: false
         });
         video.srcObject = stream;
@@ -108,8 +140,6 @@
 
     // 全局传感器数据（单位：度）
     let alpha = 0, beta = 0, gamma = 0;
-
-    // 请求设备方向传感器权限（iOS 13+需要）
     function initDeviceOrientation() {
       if (typeof DeviceOrientationEvent !== "undefined" &&
           typeof DeviceOrientationEvent.requestPermission === "function") {
@@ -133,17 +163,39 @@
     }
     initDeviceOrientation();
 
-    // 用于记录已扫描的刻度（以每5°为单位），共72个刻度
+    // 用于记录已扫描的刻度（每5°为单位），共72个刻度
     const visitedTicks = new Set();
     const TOTAL_TICKS = 360 / 5; // 72
 
-    // 重置按钮处理：清空扫描记录
-    const resetButton = document.getElementById("resetButton");
+    // 用于记录已捕获的方向截图，键为方向字符串
+    let capturedDirections = {};
+
+    // 重置按钮处理：清空扫描记录及截图
     resetButton.addEventListener("click", () => {
       visitedTicks.clear();
+      capturedDirections = {};
+      // 清空所有图片栏
+      const directions = ["东", "南", "西", "北", "东南", "西南", "东北", "西北"];
+      directions.forEach(dir => {
+        let imgElem = document.getElementById("img_" + dir);
+        if (imgElem) {
+          imgElem.src = "";
+        }
+      });
     });
 
-    // 绘制顶部刻度盘，并更新完成度标签
+    // 用于捕获当前视频截图，返回 data URL
+    function captureSnapshot() {
+      const snapCanvas = document.createElement("canvas");
+      const snapCtx = snapCanvas.getContext("2d");
+      // 使用视频实际尺寸，如果不可用则设置默认值
+      snapCanvas.width = video.videoWidth || 640;
+      snapCanvas.height = video.videoHeight || 480;
+      snapCtx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
+      return snapCanvas.toDataURL("image/png");
+    }
+
+    // 绘制顶部刻度盘，并更新完成度标签和根据扫描捕获截图
     function drawCompass() {
       const dialHeight = 80;  // 刻度盘区域高度
       ctx.save();
@@ -151,7 +203,7 @@
       ctx.fillStyle = "rgba(255,255,255,0.5)";
       ctx.fillRect(0, 0, canvas.width, dialHeight);
 
-      // 刻度盘的基准线
+      // 刻度盘基准线
       const centerX = canvas.width / 2;
       const centerY = dialHeight - 20;
       ctx.strokeStyle = "black";
@@ -164,40 +216,40 @@
       // 计算修正后的方向：直接用 α+γ（单位：度）
       let correctedHeading = (alpha + gamma) % 360;
       if (correctedHeading < 0) correctedHeading += 360;
-      let heading = correctedHeading;  // 当前方向
+      let heading = correctedHeading;
 
-      // 仅当 beta 在 80°～100°时记录当前方向的刻度
+      // 仅当 beta 在 80～100°时记录当前方向的刻度
       let currentTick = Math.round(heading / 5) * 5;
       if (currentTick >= 360) currentTick = 0;
       if (beta >= 80 && beta <= 100) {
         visitedTicks.add(currentTick);
       }
 
-      // 每度对应的像素数（可根据需要调整）
+      // 每度对应的像素数（可调整）
       const pxPerDegree = 3;
-      // 屏幕左右能显示的角度范围
       const degreesVisible = canvas.width / (2 * pxPerDegree);
-      // 以 5° 为单位绘制刻度，计算显示范围内的起始与结束刻度
       let startTick = Math.floor((heading - degreesVisible) / 5) * 5;
-      let endTick   = Math.ceil((heading + degreesVisible) / 5) * 5;
+      let endTick = Math.ceil((heading + degreesVisible) / 5) * 5;
 
+      // 绘制每个刻度
       for (let tick = startTick; tick <= endTick; tick += 5) {
-        // 处理 360° 循环，计算该刻度与中心方向的差值
+        // 计算该刻度与当前方向的差值（处理360°循环）
         let diff = tick - heading;
         diff = ((diff + 180) % 360) - 180;
         let x = centerX + diff * pxPerDegree;
-
-        // 默认短刻度高度
         let tickHeight = 10;
         let label = null;
-        // 根据刻度（模360）确定标签（直接在 switch 中交换南北）
+        // 计算模360后的刻度值
         let modTick = ((tick % 360) + 360) % 360;
+        // 根据 modTick 确定方向标签（本代码中采用的映射为）：
+        // 0 -> "南", 45 -> "东南", 90 -> "东", 135 -> "东北",
+        // 180 -> "北", 225 -> "西北", 270 -> "西", 315 -> "西南"
         switch(modTick) {
-          case 0:   label = "南"; break;     // 原来为“北”，现交换显示
+          case 0:   label = "南"; break;
           case 45:  label = "东南"; break;
           case 90:  label = "东"; break;
           case 135: label = "东北"; break;
-          case 180: label = "北"; break;       // 原来为“南”，现交换显示
+          case 180: label = "北"; break;
           case 225: label = "西北"; break;
           case 270: label = "西"; break;
           case 315: label = "西南"; break;
@@ -205,20 +257,36 @@
         if(modTick % 45 === 0) {
           tickHeight = 20;
         }
-        // 根据是否扫描过，设置刻度颜色：已扫描为绿色，未扫描为红色
+        // 根据扫描记录设置刻度颜色：已扫描为绿色，未扫描为红色
         let tickColor = visitedTicks.has(modTick) ? "green" : "red";
         ctx.strokeStyle = tickColor;
-        // 绘制刻度线
         ctx.beginPath();
         ctx.moveTo(x, centerY);
         ctx.lineTo(x, centerY - tickHeight);
         ctx.stroke();
-        // 绘制刻度标签（如果有）
         if (label !== null) {
           ctx.font = "16px Arial";
           ctx.fillStyle = tickColor;
           ctx.textAlign = "center";
           ctx.fillText(label, x, centerY - tickHeight - 5);
+        }
+
+        // 判断如果当前刻度正好属于八个特定方向，则进行截图（仅第一次）
+        // 八个特定方向要求：东（90）、南（0）、西（270）、北（180）、东南（45）、西南（315）、东北（135）、西北（225）
+        const validTicks = [0, 45, 90, 135, 180, 225, 270, 315];
+        if (beta >= 80 && beta <= 100 && validTicks.includes(modTick)) {
+          // 若对应方向尚未捕获，则捕获快照
+          if (!capturedDirections[label]) {
+            let dataURL = captureSnapshot();
+            // 注意：下方图片栏要求顺序为：东、南、西、北、东南、西南、东北、西北
+            // 当前 label 为上述映射（0:"南",45:"东南",90:"东",135:"东北",180:"北",225:"西北",270:"西",315:"西南"）
+            // 因此，我们直接用 label作为 id 后缀更新对应图片（例如 img_东）
+            let imgElem = document.getElementById("img_" + label);
+            if (imgElem) {
+              imgElem.src = dataURL;
+            }
+            capturedDirections[label] = true;
+          }
         }
       }
 
@@ -231,7 +299,7 @@
       ctx.closePath();
       ctx.fill();
 
-      // 更新完成度标签（通过 DOM 元素显示）
+      // 更新完成度标签（通过 DOM 显示）
       const completion = Math.round((visitedTicks.size / TOTAL_TICKS) * 100);
       completionLabel.innerText = "完成度: " + completion + "%";
 
@@ -240,7 +308,6 @@
 
     // 绘制下半部分传感器数据（动态直线及水平参考线）
     function drawSensors() {
-      // 绘制静态水平线（黑色）
       ctx.beginPath();
       ctx.moveTo(0, canvas.height / 2);
       ctx.lineTo(canvas.width, canvas.height / 2);
@@ -248,14 +315,12 @@
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // 以 β=90° 为基准计算垂直偏移（β>90时，手机向下倾斜，直线上移）
-      const verticalScale = 3; // 每度偏差对应的像素数
+      const verticalScale = 3;
       const offsetY = -(beta - 90) * verticalScale;
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2 + offsetY;
       const lineLength = 200;
 
-      // 简单处理：当手机接近竖直时，γ 的影响进行一定平滑
       const threshold = 10;
       const deviation = Math.abs(beta - 90);
       const factor = Math.min(deviation / threshold, 1);
@@ -264,7 +329,6 @@
       const dx = (lineLength / 2) * Math.cos(angle);
       const dy = (lineLength / 2) * Math.sin(angle);
 
-      // 绘制红色动态直线
       ctx.beginPath();
       ctx.moveTo(centerX - dx, centerY - dy);
       ctx.lineTo(centerX + dx, centerY + dy);
@@ -281,11 +345,7 @@
 
       // 更新 beta 标签，根据 beta 值范围显示不同颜色
       betaLabel.innerText = "Beta: " + beta.toFixed(1) + "°";
-      if(beta >= 80 && beta <= 100) {
-        betaLabel.style.color = "green";
-      } else {
-        betaLabel.style.color = "red";
-      }
+      betaLabel.style.color = (beta >= 80 && beta <= 100) ? "green" : "red";
 
       requestAnimationFrame(draw);
     }
