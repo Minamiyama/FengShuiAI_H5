@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8">
   <!-- viewport设置，确保在高像素密度屏幕下显示合适 -->
@@ -10,13 +11,16 @@
     html {
       font-size: 16px;
     }
+
     /* 全局样式：去除默认内边距，背景为黑色 */
-    body, html {
+    body,
+    html {
       margin: 0;
       padding: 0;
       overflow: hidden;
       background: #000;
     }
+
     /* 摄像头视频：全屏背景，置于最底层 */
     #video {
       position: fixed;
@@ -27,6 +31,7 @@
       object-fit: cover;
       z-index: -3;
     }
+
     /* canvas：用于绘制传感器数据和刻度盘，覆盖全屏 */
     #canvas {
       position: fixed;
@@ -35,88 +40,119 @@
       width: 100%;
       height: 100%;
       z-index: -2;
-      pointer-events: none; /* 不拦截用户交互 */
+      pointer-events: none;
+      /* 不拦截用户交互 */
     }
+
     /* β值标签：显示当前β值，位于左上角 */
     #betaLabel {
       position: fixed;
-      top: 0.625rem; /* 10px */
-      left: 0.625rem; /* 10px */
+      top: 0.625rem;
+      /* 10px */
+      left: 0.625rem;
+      /* 10px */
       z-index: 2;
-      font-size: 1.25rem; /* 20px */
-      background: rgba(255,255,255,0.7);
-      padding: 0.3125rem 0.625rem; /* 5px 10px */
+      font-size: 1.25rem;
+      /* 20px */
+      background: rgba(255, 255, 255, 0.7);
+      padding: 0.3125rem 0.625rem;
+      /* 5px 10px */
       border-radius: 0.25rem;
     }
+
     /* 完成度标签：显示扫描完成度，居中于页面顶部 */
     #completionLabel {
       position: fixed;
-      top: 5.625rem; /* 90px */
+      top: 5.625rem;
+      /* 90px */
       left: 50%;
       transform: translateX(-50%);
       z-index: 2;
-      font-size: 1.25rem; /* 20px */
+      font-size: 1.25rem;
+      /* 20px */
       color: blue;
-      background: rgba(255,255,255,0.7);
-      padding: 0.125rem 0.5rem; /* 2px 8px */
+      background: rgba(255, 255, 255, 0.7);
+      padding: 0.125rem 0.5rem;
+      /* 2px 8px */
       border-radius: 0.25rem;
     }
+
     /* 重置按钮：位于右上角下方，用于重置扫描记录及截图 */
     #resetButton {
       position: fixed;
-      top: 8.75rem; /* 140px */
-      right: 0.625rem; /* 10px */
+      top: 8.75rem;
+      /* 140px */
+      right: 0.625rem;
+      /* 10px */
       z-index: 2;
-      padding: 0.625rem 1.25rem; /* 10px 20px */
-      font-size: 1rem; /* 16px */
+      padding: 0.625rem 1.25rem;
+      /* 10px 20px */
+      font-size: 1rem;
+      /* 16px */
     }
+
     /* 语言切换器：下拉菜单，位于右上角 */
     #languageSwitcher {
       position: fixed;
-      top: 6.25rem; /* 100px */
-      right: 0.625rem; /* 10px */
+      top: 6.25rem;
+      /* 100px */
+      right: 0.625rem;
+      /* 10px */
       z-index: 2;
-      font-size: 1rem; /* 16px */
-      background: rgba(255,255,255,0.7);
+      font-size: 1rem;
+      /* 16px */
+      background: rgba(255, 255, 255, 0.7);
       border: 0.125rem solid #ccc;
       border-radius: 0.25rem;
       padding: 0.3125rem;
     }
+
     /* 下方方向图片栏容器：使用CSS Grid分为两行，每行4个 */
     #directionContainer {
       position: fixed;
       bottom: 0;
       left: 0;
       width: 100%;
-      background: rgba(255,255,255,0.8);
+      background: rgba(255, 255, 255, 0.8);
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 0.625rem; /* 10px间隔 */
-      padding: 0.625rem; /* 内边距 */
+      gap: 0.625rem;
+      /* 10px间隔 */
+      padding: 0.625rem;
+      /* 内边距 */
       z-index: 2;
     }
+
     /* 每个方向项：垂直排列，居中显示 */
     .directionItem {
       display: flex;
       flex-direction: column;
       align-items: center;
     }
+
     /* 方向项中的图片 */
     .directionItem img {
-      width: 6.25rem; /* 100px */
-      height: 6.25rem; /* 100px */
+      width: 6.25rem;
+      /* 100px */
+      height: 6.25rem;
+      /* 100px */
       object-fit: cover;
-      border: 0.125rem solid #ccc; /* 2px */
+      border: 0.125rem solid #ccc;
+      /* 2px */
       background: #eee;
     }
+
     /* 方向项中的文字标签 */
     .directionLabel {
-      font-size: 1rem; /* 16px */
-      margin-top: 0.3125rem; /* 5px */
+      font-size: 1rem;
+      /* 16px */
+      margin-top: 0.3125rem;
+      /* 5px */
       color: #333;
     }
   </style>
 </head>
+
 <body>
   <!-- 摄像头视频元素，用于显示实时摄像头画面 -->
   <video id="video" autoplay playsinline muted></video>
@@ -232,20 +268,22 @@
      * 图标映射：定义各方向图标文件（正北使用“月老log.png”） *
      ***************************************************/
     const iconMapping = {
-      // "东": "icon_east.png",
-      // "南": "icon_south.png",
-      // "西": "icon_west.png",
-      "北": "月老logo.png", // 正北方向
+      "东": "",
+      "南": "",
+      "西": "",
+      "北": "月老logo.png",
       "东南": "财神logo.png",
-      // "西南": "icon_southwest.png",
-      // "东北": "icon_northeast.png",
-      // "西北": "icon_northwest.png"
+      "西南": "",
+      "东北": "",
+      "西北": ""
     };
     // 创建图标Image对象，存入icons对象中
     const icons = {};
     for (let dir in iconMapping) {
-      icons[dir] = new Image();
-      icons[dir].src = iconMapping[dir];
+      if (dir !== "") {
+        icons[dir] = new Image();
+        icons[dir].src = iconMapping[dir];
+      }
     }
 
     /**********************************
@@ -291,7 +329,7 @@
     let alpha = 0, beta = 0, gamma = 0; // 单位：度
     function initDeviceOrientation() {
       if (typeof DeviceOrientationEvent !== "undefined" &&
-          typeof DeviceOrientationEvent.requestPermission === "function") {
+        typeof DeviceOrientationEvent.requestPermission === "function") {
         DeviceOrientationEvent.requestPermission()
           .then(response => {
             if (response === "granted") {
@@ -308,7 +346,7 @@
     function handleOrientation(event) {
       // 更新全局的alpha、beta、gamma值
       alpha = event.alpha || 0;
-      beta  = event.beta  || 0;
+      beta = event.beta || 0;
       gamma = event.gamma || 0;
     }
     initDeviceOrientation();
@@ -551,5 +589,12 @@
     // 开始主绘制循环
     draw();
   </script>
+
+  <!-- ES模块脚本：导入 onnxruntime-web/webgpu 包，供后续使用 -->
+  <script type="module">
+    import * as ort from 'onnxruntime-web/webgpu';
+    console.log("ONNXRuntime Web GPU模块已导入：", ort);
+  </script>
 </body>
+
 </html>
