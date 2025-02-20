@@ -1,14 +1,600 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Yolo object detection ort-web</title>
-    <script type="module" crossorigin src="./assets/index-BBr4H4Q_.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-D1ldfMot.css">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script src="./opencv.js" async type="text/javascript"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <!-- viewport设置，确保在高像素密度屏幕下显示合适 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>摄像头背景+传感器数据+刻度盘（多语言切换及图标）</title>
+  <style>
+    /* 设置基础字体大小，1rem = 16px */
+    html {
+      font-size: 16px;
+    }
+
+    /* 全局样式：去除默认内边距，背景为黑色 */
+    body,
+    html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* 摄像头视频：全屏背景，置于最底层 */
+    #video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -3;
+    }
+
+    /* canvas：用于绘制传感器数据和刻度盘，覆盖全屏 */
+    #canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -2;
+      pointer-events: none;
+      /* 不拦截用户交互 */
+    }
+
+    /* β值标签：显示当前β值，位于左上角 */
+    #betaLabel {
+      position: fixed;
+      top: 0.625rem;
+      /* 10px */
+      left: 0.625rem;
+      /* 10px */
+      z-index: 2;
+      font-size: 1.25rem;
+      /* 20px */
+      background: rgba(255, 255, 255, 0.7);
+      padding: 0.3125rem 0.625rem;
+      /* 5px 10px */
+      border-radius: 0.25rem;
+    }
+
+    /* 完成度标签：显示扫描完成度，居中于页面顶部 */
+    #completionLabel {
+      position: fixed;
+      top: 5.625rem;
+      /* 90px */
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
+      font-size: 1.25rem;
+      /* 20px */
+      color: blue;
+      background: rgba(255, 255, 255, 0.7);
+      padding: 0.125rem 0.5rem;
+      /* 2px 8px */
+      border-radius: 0.25rem;
+    }
+
+    /* 重置按钮：位于右上角下方，用于重置扫描记录及截图 */
+    #resetButton {
+      position: fixed;
+      top: 8.75rem;
+      /* 140px */
+      right: 0.625rem;
+      /* 10px */
+      z-index: 2;
+      padding: 0.625rem 1.25rem;
+      /* 10px 20px */
+      font-size: 1rem;
+      /* 16px */
+    }
+
+    /* 语言切换器：下拉菜单，位于右上角 */
+    #languageSwitcher {
+      position: fixed;
+      top: 6.25rem;
+      /* 100px */
+      right: 0.625rem;
+      /* 10px */
+      z-index: 2;
+      font-size: 1rem;
+      /* 16px */
+      background: rgba(255, 255, 255, 0.7);
+      border: 0.125rem solid #ccc;
+      border-radius: 0.25rem;
+      padding: 0.3125rem;
+    }
+
+    /* 下方方向图片栏容器：使用CSS Grid分为两行，每行4个 */
+    #directionContainer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.625rem;
+      /* 10px间隔 */
+      padding: 0.625rem;
+      /* 内边距 */
+      z-index: 2;
+    }
+
+    /* 每个方向项：垂直排列，居中显示 */
+    .directionItem {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* 方向项中的图片 */
+    .directionItem img {
+      width: 6.25rem;
+      /* 100px */
+      height: 6.25rem;
+      /* 100px */
+      object-fit: cover;
+      border: 0.125rem solid #ccc;
+      /* 2px */
+      background: #eee;
+    }
+
+    /* 方向项中的文字标签 */
+    .directionLabel {
+      font-size: 1rem;
+      /* 16px */
+      margin-top: 0.3125rem;
+      /* 5px */
+      color: #333;
+    }
+  </style>
+  <script type="module" crossorigin src="/test/assets/index-CURWyKAS.js"></script>
+  <link rel="stylesheet" crossorigin href="/test/assets/index-pOSUPQQh.css">
+</head>
+
+<body>
+  <script src="/test/opencv.js" async type="text/javascript"></script>
+  <!-- 摄像头视频元素，用于显示实时摄像头画面 -->
+  <video id="video" autoplay playsinline muted></video>
+  <!-- canvas，用于绘制传感器数据（刻度盘、动态直线等） -->
+  <canvas id="canvas"></canvas>
+  <!-- β值标签：实时显示当前β值 -->
+  <div id="betaLabel">Beta: 0°</div>
+  <!-- 完成度标签：显示扫描完成度百分比 -->
+  <div id="completionLabel">完成度: 0%</div>
+  <!-- 重置按钮：点击后重置扫描记录及截图 -->
+  <button id="resetButton">重置</button>
+  <!-- 语言切换器，下拉菜单，用于切换界面语言 -->
+  <select id="languageSwitcher">
+    <option value="zh-CN">简体中文</option>
+    <option value="zh-TW">繁體中文</option>
+    <option value="en">English</option>
+  </select>
+  <!-- 下方方向图片栏，使用Grid布局分两行，每行4个，每个方向项包含图片和文字标签 -->
+  <div id="directionContainer">
+    <div class="directionItem">
+      <img id="img_1" alt="">
+      <div class="directionLabel"></div>
+    </div>
+    <div class="directionItem">
+      <img id="img_2" alt="">
+      <div class="directionLabel"></div>
+    </div>
+    <div class="directionItem">
+      <img id="img_3" alt="">
+      <div class="directionLabel"></div>
+    </div>
+    <div class="directionItem">
+      <img id="img_4" alt="">
+      <div class="directionLabel"></div>
+    </div>
+    <div class="directionItem">
+      <img id="img_5" alt="">
+      <div class="directionLabel"></div>
+    </div>
+    <div class="directionItem">
+      <img id="img_6" alt="">
+      <div class="directionLabel"></div>
+    </div>
+    <div class="directionItem">
+      <img id="img_7" alt="">
+      <div class="directionLabel"></div>
+    </div>
+    <div class="directionItem">
+      <img id="img_8" alt="">
+      <div class="directionLabel"></div>
+    </div>
+  </div>
+
+  <script>
+    /*************************************
+     * 语言数据定义：不同语言下的文本内容 *
+     *************************************/
+    const languageData = {
+      "zh-CN": {
+        betaLabel: "Beta: ",
+        completionLabel: "完成度: ",
+        resetButton: "重置",
+        directions: {
+          east: "东",
+          south: "南",
+          west: "西",
+          north: "北",
+          southeast: "东南",
+          southwest: "西南",
+          northeast: "东北",
+          northwest: "西北"
+        },
+        bottomDirections: ["东", "南", "西", "北", "东南", "西南", "东北", "西北"]
+      },
+      "zh-TW": {
+        betaLabel: "Beta: ",
+        completionLabel: "完成度: ",
+        resetButton: "重置",
+        directions: {
+          east: "東",
+          south: "南",
+          west: "西",
+          north: "北",
+          southeast: "東南",
+          southwest: "西南",
+          northeast: "東北",
+          northwest: "西北"
+        },
+        bottomDirections: ["東", "南", "西", "北", "東南", "西南", "東北", "西北"]
+      },
+      "en": {
+        betaLabel: "Beta: ",
+        completionLabel: "Completion: ",
+        resetButton: "Reset",
+        directions: {
+          east: "East",
+          south: "South",
+          west: "West",
+          north: "North",
+          southeast: "Southeast",
+          southwest: "Southwest",
+          northeast: "Northeast",
+          northwest: "Northwest"
+        },
+        bottomDirections: ["East", "South", "West", "North", "Southeast", "Southwest", "Northeast", "Northwest"]
+      }
+    };
+
+    // 当前语言，默认使用简体中文
+    let currentLang = "zh-CN";
+
+    /***************************************************
+     * 图标映射：定义各方向图标文件（正北使用“月老log.png”） *
+     ***************************************************/
+    const iconMapping = {
+      "东": "",
+      "南": "",
+      "西": "",
+      "北": "月老logo.png",
+      "东南": "财神logo.png",
+      "西南": "",
+      "东北": "",
+      "西北": ""
+    };
+    // 创建图标Image对象，存入icons对象中
+    const icons = {};
+    for (let dir in iconMapping) {
+      if (dir !== "") {
+        icons[dir] = new Image();
+        icons[dir].src = iconMapping[dir];
+      }
+    }
+
+    /**********************************
+     * 初始化DOM元素和全局变量       *
+     **********************************/
+    const video = document.getElementById("video");              // 视频元素
+    const canvas = document.getElementById("canvas");            // canvas元素
+    const ctx = canvas.getContext("2d");                         // canvas绘图上下文
+    const betaLabel = document.getElementById("betaLabel");        // 显示β值的标签
+    const completionLabel = document.getElementById("completionLabel"); // 显示完成度的标签
+    const resetButton = document.getElementById("resetButton");    // 重置按钮
+    const languageSwitcher = document.getElementById("languageSwitcher"); // 语言切换下拉菜单
+
+    /******************************************
+     * 自适应canvas尺寸：确保全屏显示       *
+     ******************************************/
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+
+    /************************************************
+     * 获取摄像头视频流，并将其赋值给video.srcObject *
+     ************************************************/
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        console.error("无法获取摄像头视频:", err);
+      }
+    }
+    startCamera();
+
+    /*******************************************
+     * 初始化设备方向传感器数据                *
+     *******************************************/
+    let alpha = 0, beta = 0, gamma = 0; // 单位：度
+    function initDeviceOrientation() {
+      if (typeof DeviceOrientationEvent !== "undefined" &&
+        typeof DeviceOrientationEvent.requestPermission === "function") {
+        DeviceOrientationEvent.requestPermission()
+          .then(response => {
+            if (response === "granted") {
+              window.addEventListener("deviceorientation", handleOrientation);
+            } else {
+              alert("未授权设备方向传感器");
+            }
+          })
+          .catch(console.error);
+      } else {
+        window.addEventListener("deviceorientation", handleOrientation);
+      }
+    }
+    function handleOrientation(event) {
+      // 更新全局的alpha、beta、gamma值
+      alpha = event.alpha || 0;
+      beta = event.beta || 0;
+      gamma = event.gamma || 0;
+    }
+    initDeviceOrientation();
+
+    /*******************************************************
+     * 扫描记录和截图记录初始化                          *
+     *******************************************************/
+    const visitedTicks = new Set();       // 记录以每5°为单位的扫描刻度（共72个）
+    const TOTAL_TICKS = 360 / 5;            // 72
+    let capturedDirections = {};            // 记录已捕获的方向截图
+
+    /***************************************************
+     * getDirectionMapping()：返回当前语言下的方向映射 *
+     ***************************************************/
+    function getDirectionMapping() {
+      const d = languageData[currentLang].directions;
+      return {
+        0: d.south,
+        45: d.southeast,
+        90: d.east,
+        135: d.northeast,
+        180: d.north,
+        225: d.northwest,
+        270: d.west,
+        315: d.southwest
+      };
+    }
+
+    /******************************************
+     * updateLanguageUI()：更新页面静态文本      *
+     ******************************************/
+    function updateLanguageUI() {
+      // 更新β标签前缀（β值由draw()实时更新）
+      betaLabel.innerText = languageData[currentLang].betaLabel + beta.toFixed(1) + "°";
+      // 更新完成度标签前缀（draw()中更新百分比）
+      completionLabel.innerText = languageData[currentLang].completionLabel + "0%";
+      // 更新重置按钮文本
+      resetButton.innerText = languageData[currentLang].resetButton;
+      // 更新下方方向图片栏中的文字标签
+      const bottomDirs = languageData[currentLang].bottomDirections;
+      const directionLabels = document.querySelectorAll(".directionLabel");
+      directionLabels.forEach((elem, index) => {
+        elem.textContent = bottomDirs[index];
+      });
+    }
+    updateLanguageUI();
+
+    /*********************************************
+     * 语言切换器事件：切换当前语言             *
+     *********************************************/
+    languageSwitcher.addEventListener("change", (e) => {
+      currentLang = e.target.value;
+      updateLanguageUI();
+    });
+
+    /**********************************************
+     * captureSnapshot()：捕获当前视频截图，返回 data URL *
+     **********************************************/
+    function captureSnapshot() {
+      const snapCanvas = document.createElement("canvas");
+      const snapCtx = snapCanvas.getContext("2d");
+      snapCanvas.width = video.videoWidth || 640;
+      snapCanvas.height = video.videoHeight || 480;
+      snapCtx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
+      return snapCanvas.toDataURL("image/png");
+    }
+
+    /************************************************************
+     * drawCompass()：绘制顶部刻度盘，更新扫描记录、完成度和截图 *
+     ************************************************************/
+    function drawCompass() {
+      const dialHeight = 80;  // 刻度盘区域高度（像素）
+      ctx.save();             // 保存当前绘图状态
+      // 绘制刻度盘背景（半透明白色）
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.fillRect(0, 0, canvas.width, dialHeight);
+      // 绘制刻度盘基准线，位于刻度盘底部上方
+      const centerX = canvas.width / 2;
+      const centerY = dialHeight - 20;
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, centerY);
+      ctx.lineTo(canvas.width, centerY);
+      ctx.stroke();
+
+      // 计算修正后的方向：直接使用 alpha + gamma（单位：度）
+      let correctedHeading = (alpha + gamma) % 360;
+      if (correctedHeading < 0) correctedHeading += 360;
+      let heading = correctedHeading;
+      // 当β在80～100°范围内时，记录当前方向对应的刻度（取整到5°）
+      let currentTick = Math.round(heading / 5) * 5;
+      if (currentTick >= 360) currentTick = 0;
+      if (beta >= 80 && beta <= 100) {
+        visitedTicks.add(currentTick);
+      }
+
+      // 设置每度对应的像素数（3px/度）及可见角度范围
+      const pxPerDegree = 3;
+      const degreesVisible = canvas.width / (2 * pxPerDegree);
+      let startTick = Math.floor((heading - degreesVisible) / 5) * 5;
+      let endTick = Math.ceil((heading + degreesVisible) / 5) * 5;
+      const mapping = getDirectionMapping();
+
+      // 遍历每个刻度进行绘制
+      for (let tick = startTick; tick <= endTick; tick += 5) {
+        let diff = tick - heading;
+        diff = ((diff + 180) % 360) - 180;
+        let x = centerX + diff * pxPerDegree;
+        let tickHeight = 10;  // 默认短刻度高度
+        let modTick = ((tick % 360) + 360) % 360;
+        let label = mapping[modTick] || null;
+        if (modTick % 45 === 0) {
+          tickHeight = 20;
+        }
+        let tickColor = visitedTicks.has(modTick) ? "green" : "red";
+        ctx.strokeStyle = tickColor;
+        ctx.beginPath();
+        ctx.moveTo(x, centerY);
+        ctx.lineTo(x, centerY - tickHeight);
+        ctx.stroke();
+        if (label !== null) {
+          ctx.font = "16px Arial";
+          ctx.fillStyle = tickColor;
+          ctx.textAlign = "center";
+          ctx.fillText(label, x, centerY - tickHeight - 5);
+        }
+      }
+
+      /*****************************************************************
+       * 截图逻辑：仅针对当前方向（currentTick）捕获一次截图          *
+       * 如果当前刻度属于八个特定方向且在β有效范围内，并且该方向未捕获，则捕获 *
+       *****************************************************************/
+      const validTicks = [0, 45, 90, 135, 180, 225, 270, 315];
+      if (beta >= 80 && beta <= 100 && validTicks.includes(currentTick)) {
+        let directionKey = mapping[currentTick];
+        if (directionKey && !capturedDirections[directionKey]) {
+          let dataURL = captureSnapshot(); // 捕获当前视频截图
+          // 更新下方方向图片栏（根据当前语言的bottomDirections数组约定顺序）
+          const imgs = document.querySelectorAll("#directionContainer img");
+          const index = languageData[currentLang].bottomDirections.indexOf(directionKey);
+          if (index !== -1 && imgs[index]) {
+            imgs[index].src = dataURL;
+          }
+          capturedDirections[directionKey] = true; // 标记该方向已捕获
+        }
+      }
+
+      /*********************************************
+       * 绘制图标：在刻度盘下方绘制八个方向对应的图标 *
+       *********************************************/
+      // 图标绘制位置：将图标绘制在刻度盘下方，设定固定高度（例如：dialHeight + 10px）
+      const iconY = dialHeight + 10;
+      // 图标尺寸设为40px x 40px
+      const iconWidth = 80;
+      const iconHeight = 80;
+      // 遍历每个有效方向（validTicks），计算x坐标，并绘制图标
+      validTicks.forEach(tickValue => {
+        let diff = tickValue - heading;
+        diff = ((diff + 180) % 360) - 180;
+        let x = centerX + diff * pxPerDegree;
+        // 根据当前语言下的映射获取方向名称
+        let dirName = mapping[tickValue];
+        // 如果对应的图标存在，则绘制
+        if (icons[dirName]) {
+          // 将图标绘制在(x - iconWidth/2, iconY)处
+          ctx.drawImage(icons[dirName], x - iconWidth / 2, iconY, iconWidth, iconHeight);
+        }
+      });
+
+      // 绘制一个指示当前方向的红色三角形，位于刻度盘底部中央
+      ctx.fillStyle = "red";
+      ctx.beginPath();
+      ctx.moveTo(centerX, dialHeight - 5);
+      ctx.lineTo(centerX - 10, dialHeight - 25);
+      ctx.lineTo(centerX + 10, dialHeight - 25);
+      ctx.closePath();
+      ctx.fill();
+
+      // 更新完成度标签（通过DOM显示）
+      const completion = Math.round((visitedTicks.size / TOTAL_TICKS) * 100);
+      completionLabel.innerText = languageData[currentLang].completionLabel + completion + "%";
+
+      ctx.restore(); // 恢复绘图状态
+    }
+
+    /*********************************************
+     * drawSensors()：绘制下半部分传感器数据图形 *
+     *********************************************/
+    function drawSensors() {
+      // 绘制水平参考线，位于画布垂直中心
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // 计算垂直偏移：以β=90°为基准，当β>90时，向上平移
+      const verticalScale = 3; // 每度对应的像素数
+      const offsetY = -(beta - 90) * verticalScale;
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2 + offsetY;
+      const lineLength = 200; // 动态直线长度
+
+      // 对γ的影响做简单平滑处理
+      const threshold = 10;
+      const deviation = Math.abs(beta - 90);
+      const factor = Math.min(deviation / threshold, 1);
+      const effectiveGamma = gamma * factor;
+      const angle = effectiveGamma * Math.PI / 180;
+      const dx = (lineLength / 2) * Math.cos(angle);
+      const dy = (lineLength / 2) * Math.sin(angle);
+
+      // 绘制红色动态直线，表示设备的倾斜状态
+      ctx.beginPath();
+      ctx.moveTo(centerX - dx, centerY - dy);
+      ctx.lineTo(centerX + dx, centerY + dy);
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+
+    /***************************************
+     * 主绘制循环：清空画布后绘制各部分内容 *
+     ***************************************/
+    function draw() {
+      // 清除整个canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // 绘制下半部分传感器数据图形
+      drawSensors();
+      // 绘制顶部刻度盘，同时更新扫描记录、完成度和截图、图标
+      drawCompass();
+      // 更新β标签：实时显示当前β值，并根据范围变色
+      betaLabel.innerText = languageData[currentLang].betaLabel + beta.toFixed(1) + "°";
+      betaLabel.style.color = (beta >= 80 && beta <= 100) ? "green" : "red";
+      // 循环调用draw()形成动画效果
+      requestAnimationFrame(draw);
+    }
+    // 开始主绘制循环
+    draw();
+  </script>
+
+  <div id="root"></div>
+  <script src="/test/opencv.js" async type="text/javascript"></script>
+</body>
+
 </html>
