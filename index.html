@@ -154,6 +154,7 @@
 </head>
 
 <body>
+  <script src="/opencv.js" async type="text/javascript"></script>
   <!-- 摄像头视频元素，用于显示实时摄像头画面 -->
   <video id="video" autoplay playsinline muted></video>
   <!-- canvas，用于绘制传感器数据（刻度盘、动态直线等） -->
@@ -592,7 +593,7 @@
 
   <!-- ES模块脚本：导入 onnxruntime-web/webgpu 包，供后续使用 -->
   <script type="module">
-    import * as ort from '/onnxruntime-web/webgpu/dist';
+    import * as ort from '/onnxruntime-web/webgpu/dist/ort.webgpu.min.js';
     console.log("ONNXRuntime Web GPU模块已导入：", ort);
   </script>
 </body>
